@@ -28,6 +28,20 @@ app.post('/api/orders',async (req,res)=>{
    orders.push(order);return {order,created:true};
  });res.status(result.created?201:200).json(result.order);
 });
+app.patch('/api/orders/:id/items/:index',async(req,res)=>{
+ const index=Number(req.params.index),{qty,expectedItems}=req.body||{};
+ if(!Number.isInteger(index)||index<0||!Number.isInteger(qty)||qty<1||qty>99||!Array.isArray(expectedItems))return fail(400,'Số lượng phải từ 1 đến 99.');
+ const updated=await store.mutate(orders=>{
+   const order=orders.find(o=>o.id===req.params.id);
+   if(!order)return fail(404,'Không tìm thấy phiếu gọi món.');
+   if(order.paid)return fail(409,'Hóa đơn đã thanh toán, không thể đổi số lượng.');
+   if(JSON.stringify(order.items)!==JSON.stringify(expectedItems))return fail(409,'Phiếu gọi món đã thay đổi. Vui lòng kiểm tra và thử lại.');
+   if(!order.items[index])return fail(404,'Không tìm thấy món cần sửa.');
+   order.items[index].qty=qty;
+   return order;
+ });
+ res.json(updated);
+});
 app.delete('/api/orders/:id/items/:index',async(req,res)=>{
  const index=Number(req.params.index),expectedItems=req.body?.expectedItems;
  if(!Number.isInteger(index)||index<0||!Array.isArray(expectedItems))return fail(400,'Món cần xóa không hợp lệ.');

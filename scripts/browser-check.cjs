@@ -54,13 +54,25 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
    for(const width of [320,390]){await staff.setViewportSize({width,height:844});assert.ok(await staff.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
    await create(2,'remove-browser');await create(2,'remove-browser-second');
    await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill="open:2"]').click();
+   assert.equal(await staff.locator('[data-delta="-1"]').first().isDisabled(),true);
+   const initialTotal=await staff.locator('.totals').innerText();
+   await staff.locator('[data-delta="1"]').first().click();
+   await staff.waitForFunction(()=>document.querySelector('.bill-quantity>span')?.textContent==='2');
+   assert.notEqual(await staff.locator('.totals').innerText(),initialTotal);
+   for(const width of [320,390]){await staff.setViewportSize({width,height:844});assert.ok(await staff.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+   await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill="open:2"]').click();
+   assert.equal(await staff.locator('.bill-quantity>span').first().innerText(),'2');
+   await staff.locator('[data-delta="-1"]').first().click();
+   await staff.waitForFunction(()=>document.querySelector('.bill-quantity>span')?.textContent==='1');
+   assert.equal(await staff.locator('.totals').innerText(),initialTotal);
    staff.once('dialog',d=>d.dismiss());await staff.locator('[data-remove-order]').first().click();assert.equal(await staff.locator('.orderline').count(),2);
    staff.once('dialog',d=>d.accept());await staff.locator('[data-remove-order]').first().click();
    await staff.waitForFunction(()=>document.querySelectorAll('.orderline').length===1);
    staff.once('dialog',d=>d.accept());await staff.locator('[data-remove-order]').click();
    await staff.locator('.history-head').waitFor();assert.equal(await staff.locator('[data-bill="open:2"]').count(),0);
    await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill^="paid:1:"]').click();assert.equal(await staff.locator('[data-remove-order]').count(),0);
-   assert.deepEqual(errors,[]);console.log('PASS: mobile login, add table, upload photo, create/edit dish, staff order/checkout, revenue and responsive layout.');console.log('Screenshot: '+path.join(os.tmpdir(),'chd-admin-preview.png'));
+   assert.equal(await staff.locator('[data-quantity-order]').count(),0);
+   assert.deepEqual(errors,[]);console.log('PASS: mobile login, add table, upload photo, create/edit dish, staff order/checkout, quantity changes, revenue and responsive layout.');console.log('Screenshot: '+path.join(os.tmpdir(),'chd-admin-preview.png'));
  }finally{
    if(browser)await browser.close();const exited=once(child,'exit');child.kill();await exited;
    const file=path.join(dir,'orders.json');if(fs.existsSync(file))fs.unlinkSync(file);const images=path.join(dir,'images');if(fs.existsSync(images)){for(const name of fs.readdirSync(images))fs.unlinkSync(path.join(images,name));fs.rmdirSync(images);}fs.rmdirSync(dir);

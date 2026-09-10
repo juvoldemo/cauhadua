@@ -42,6 +42,25 @@ test('local routes, concurrent orders, persistence and checkout',async()=>{
   }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}
 });
 
+test('quantity edits persist, preserve item snapshots and reject stale or paid changes',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'chd-quantity-')),file=path.join(dir,'orders.json');
+ let app=await start({ORDER_DB:file});
+ try{
+  const order=await (await app.request('/api/orders','POST',{table:1,requestId:'quantity',items:[{id:'1',qty:1,note:'first'},{id:'1',qty:2,note:'second'}]})).json();
+  const route='/api/orders/'+order.id+'/items/1';
+  for(const qty of [0,100,1.5,'2'])assert.equal((await app.request(route,'PATCH',{qty,expectedItems:order.items})).status,400);
+  const updated=await (await app.request(route,'PATCH',{qty:3,expectedItems:order.items})).json();
+  assert.deepEqual(updated.items,[order.items[0],{...order.items[1],qty:3}]);
+  assert.equal((await app.request(route,'PATCH',{qty:4,expectedItems:order.items})).status,409);
+  await app.stop();app=await start({ORDER_DB:file});
+  assert.deepEqual((await (await app.request('/api/orders')).json())[0].items,updated.items);
+  const reduced=await (await app.request(route,'PATCH',{qty:1,expectedItems:updated.items})).json();
+  assert.equal(reduced.items[1].qty,1);
+  await app.request('/api/checkout','POST',{ids:[order.id]});
+  assert.equal((await app.request(route,'PATCH',{qty:2,expectedItems:reduced.items})).status,409);
+ }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}
+});
+
 test('Vercel without a database serves menu but never pretends to save orders',async()=>{
   const app=await start({VERCEL:'1'});
   try{
