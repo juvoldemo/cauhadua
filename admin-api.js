@@ -37,7 +37,7 @@ router.post('/tables',async(req,res)=>{
 });
 router.delete('/tables/:number',async(req,res)=>{
   const number=Number(req.params.number);
-  await store.mutateState(({catalog,orders})=>{if(!catalog.tables.includes(number))fail(404,'Không tìm thấy bàn.');if(catalog.tables.length===1)fail(400,'Cần giữ ít nhất một bàn.');if(orders.some(o=>o.table===number&&!o.paid))fail(409,'Bàn còn đơn chưa thanh toán.');catalog.tables=catalog.tables.filter(n=>n!==number);});res.json({ok:true});
+  await store.mutateState(({catalog,orders})=>{if(!catalog.tables.includes(number))fail(404,'Không tìm thấy bàn.');if(catalog.tables.length===1)fail(400,'Cần giữ ít nhất một bàn.');if(orders.some(o=>o.table===number&&!o.paid&&o.items.length))fail(409,'Bàn còn đơn chưa thanh toán.');catalog.tables=catalog.tables.filter(n=>n!==number);});res.json({ok:true});
 });
 router.post('/images',async(req,res)=>{
   const data=req.body?.data;

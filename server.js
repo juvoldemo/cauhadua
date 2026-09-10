@@ -14,7 +14,7 @@ app.get('/api/images/:id',async(req,res)=>{
  const [header,content]=data.split(',');res.set({'Cache-Control':'public, max-age=31536000, immutable','Content-Type':header.slice(5).split(';')[0],'X-Content-Type-Options':'nosniff'}).send(Buffer.from(content,'base64'));
 });
 // Staff can request settled orders for invoice history.
-app.get('/api/orders',async (req,res)=>res.json((await store.read()).filter(o=>req.query.history==='all'||!o.paid)));
+app.get('/api/orders',async (req,res)=>res.json((await store.read()).filter(o=>o.items.length&&(req.query.history==='all'||!o.paid))));
 app.post('/api/orders',async (req,res)=>{
  const {table,items,requestId}=req.body||{};
  if(!Number.isInteger(table)||!Array.isArray(items)||!items.length||items.length>100) return res.status(400).json({error:'Thông tin phiếu không hợp lệ.'});
@@ -28,11 +28,25 @@ app.post('/api/orders',async (req,res)=>{
    orders.push(order);return {order,created:true};
  });res.status(result.created?201:200).json(result.order);
 });
+app.delete('/api/orders/:id/items/:index',async(req,res)=>{
+ const index=Number(req.params.index),expectedItems=req.body?.expectedItems;
+ if(!Number.isInteger(index)||index<0||!Array.isArray(expectedItems))return fail(400,'Món cần xóa không hợp lệ.');
+ await store.mutate(orders=>{
+   const order=orders.find(o=>o.id===req.params.id);
+   if(!order)return fail(404,'Không tìm thấy phiếu gọi món.');
+   if(order.paid)return fail(409,'Hóa đơn đã thanh toán, không thể xóa món.');
+   if(JSON.stringify(order.items)!==JSON.stringify(expectedItems))return fail(409,'Phiếu gọi món đã thay đổi. Vui lòng tải lại và kiểm tra trước khi xóa.');
+   if(!order.items[index])return fail(404,'Không tìm thấy món cần xóa.');
+   // Keep the empty order to preserve request deduplication after the last item is removed.
+   order.items.splice(index,1);
+ });
+ res.json({ok:true});
+});
 app.post('/api/checkout',async (req,res)=>{
  const ids=req.body?.ids;if(!Array.isArray(ids)||!ids.length||ids.some(id=>typeof id!=='string'))return fail(400,'Danh sách phiếu không hợp lệ.');
  await store.mutate(orders=>{
    const selected=orders.filter(o=>ids.includes(o.id));
-   if(selected.length!==ids.length||new Set(selected.map(o=>o.table)).size!==1)return fail(400,'Danh sách phiếu không hợp lệ.');
+   if(selected.length!==ids.length||selected.some(o=>!o.items.length)||new Set(selected.map(o=>o.table)).size!==1)return fail(400,'Danh sách phiếu không hợp lệ.');
    const paymentId=randomUUID(),paidAt=new Date().toISOString();
    selected.forEach(o=>{if(!o.paid){o.paid=true;o.paidAt=paidAt;o.paymentId=paymentId;}});
  });res.json({ok:true});

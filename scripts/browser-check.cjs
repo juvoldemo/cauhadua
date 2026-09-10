@@ -52,6 +52,14 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
    assert.equal(await staff.locator('.orderline').count(),2);
    assert.match(await staff.locator('.panel').textContent(),/history-test/);
    for(const width of [320,390]){await staff.setViewportSize({width,height:844});assert.ok(await staff.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+   await create(2,'remove-browser');await create(2,'remove-browser-second');
+   await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill="open:2"]').click();
+   staff.once('dialog',d=>d.dismiss());await staff.locator('[data-remove-order]').first().click();assert.equal(await staff.locator('.orderline').count(),2);
+   staff.once('dialog',d=>d.accept());await staff.locator('[data-remove-order]').first().click();
+   await staff.waitForFunction(()=>document.querySelectorAll('.orderline').length===1);
+   staff.once('dialog',d=>d.accept());await staff.locator('[data-remove-order]').click();
+   await staff.locator('.history-head').waitFor();assert.equal(await staff.locator('[data-bill="open:2"]').count(),0);
+   await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill^="paid:1:"]').click();assert.equal(await staff.locator('[data-remove-order]').count(),0);
    assert.deepEqual(errors,[]);console.log('PASS: mobile login, add table, upload photo, create/edit dish, staff order/checkout, revenue and responsive layout.');console.log('Screenshot: '+path.join(os.tmpdir(),'chd-admin-preview.png'));
  }finally{
    if(browser)await browser.close();const exited=once(child,'exit');child.kill();await exited;

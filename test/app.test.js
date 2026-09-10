@@ -103,3 +103,28 @@ test('legacy local order arrays remain readable after catalog edits',async()=>{
  try{assert.equal((await app.request('/api/admin/tables','POST',{number:20},password)).status,201);assert.deepEqual(JSON.parse(fs.readFileSync(file)).orders,legacy);assert.equal(JSON.parse(fs.readFileSync(file)).catalog.tables.at(-1),20);}
  finally{await app.stop();fs.unlinkSync(file);fs.rmdirSync(dir);}
 });
+
+test('remove confirmed items, reject stale edits and paid edits, preserve empty request deduplication',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'chd-remove-')),file=path.join(dir,'orders.json');
+ let app=await start({ORDER_DB:file});
+ try{
+  const body={table:1,requestId:'remove-items',items:[{id:'1',qty:2,note:'first'},{id:'1',qty:1,note:'second'}]};
+  const order=await (await app.request('/api/orders','POST',body)).json();
+  const route='/api/orders/'+order.id+'/items/0';
+  assert.equal((await app.request(route,'DELETE',{expectedItems:order.items})).status,200);
+  assert.equal((await app.request(route,'DELETE',{expectedItems:order.items})).status,409);
+  await app.stop();app=await start({ORDER_DB:file});
+  let remaining=await (await app.request('/api/orders')).json();
+  assert.equal(remaining[0].items.length,1);assert.equal(remaining[0].items[0].note,'second');
+  assert.equal((await app.request(route,'DELETE',{expectedItems:remaining[0].items})).status,200);
+  assert.deepEqual(await (await app.request('/api/orders?history=all')).json(),[]);
+  assert.equal((await app.request('/api/checkout','POST',{ids:[order.id]})).status,400);
+  assert.equal((await app.request('/api/orders','POST',body)).status,200);
+  assert.deepEqual(await (await app.request('/api/orders')).json(),[]);
+  const paid=await (await app.request('/api/orders','POST',{...body,requestId:'paid-items'})).json();
+  await app.request('/api/checkout','POST',{ids:[paid.id]});
+  assert.equal((await app.request('/api/orders/'+paid.id+'/items/0','DELETE',{expectedItems:paid.items})).status,409);
+  remaining=await (await app.request('/api/orders?history=all')).json();
+  assert.equal(remaining[0].items.length,2);
+ }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}
+});
