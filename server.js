@@ -1,49 +1,43 @@
 const express = require('express');
-const fs = require('node:fs');
 const path = require('node:path');
 const {randomUUID} = require('node:crypto');
 const store = require('./order-store');
 const app = express();
-app.use(express.json({limit:'100kb'}));
+app.use(express.json({limit:'300kb'}));
 app.use('/api', (_,res,next)=>{res.set('Cache-Control','no-store');next();});
-const menu=[]; let category='';
-for(const line of fs.readFileSync(path.join(__dirname,'data/menu.txt'),'utf8').split(/\r?\n/)) {
-  if(/^\d+\./.test(line)) category=line.replace(/^\d+\.\s*/, '');
-  const m=line.match(/^- (.+) — (\d+)K(.*)$/);
-  if(m) menu.push({id:String(menu.length+1),name:m[1],price:Number(m[2])*1000,category,unit:m[3],details:[]});
-  if(/^\s+\+/.test(line)) menu.at(-1)?.details.push(line.trim().replace(/^\+\s*/,''));
-}
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
-app.get('/api/menu',(_,res)=>res.json(menu));
-app.get('/api/orders',async (_,res)=>res.json(await store.read()));
+app.use('/api/admin',require('./admin-api'));
+app.get('/api/catalog',async(_,res)=>{const catalog=await store.readCatalog();res.json({...catalog,menu:catalog.menu.filter(d=>d.active!==false)});});
+app.get('/api/menu',async(_,res)=>res.json((await store.readCatalog()).menu.filter(d=>d.active!==false)));
+app.get('/api/images/:id',async(req,res)=>{
+ const data=await store.getImage(req.params.id);if(!data)return res.sendStatus(404);
+ const [header,content]=data.split(',');res.set({'Cache-Control':'public, max-age=31536000, immutable','Content-Type':header.slice(5).split(';')[0],'X-Content-Type-Options':'nosniff'}).send(Buffer.from(content,'base64'));
+});
+// Staff only need open orders; paid history and revenue are available through admin.
+app.get('/api/orders',async (_,res)=>res.json((await store.read()).filter(o=>!o.paid)));
 app.post('/api/orders',async (req,res)=>{
  const {table,items,requestId}=req.body||{};
- if(!Number.isInteger(table)||table<1||table>12||!Array.isArray(items)||!items.length||items.length>100) return res.status(400).json({error:'Thông tin phiếu không hợp lệ.'});
+ if(!Number.isInteger(table)||!Array.isArray(items)||!items.length||items.length>100) return res.status(400).json({error:'Thông tin phiếu không hợp lệ.'});
  if(typeof requestId!=='string'||!requestId.length||requestId.length>100) return res.status(400).json({error:'Thiếu mã yêu cầu.'});
- const clean=[];
- for(const item of items){const dish=menu.find(m=>m.id===item?.id);if(!dish||!Number.isInteger(item.qty)||item.qty<1||item.qty>99||typeof item.note!=='string'||item.note.length>200)return res.status(400).json({error:'Món ăn không hợp lệ.'});clean.push({id:dish.id,name:dish.name,price:dish.price,qty:item.qty,note:item.note});}
- const result=await store.mutate(orders=>{
+ const result=await store.mutateState(({orders,catalog})=>{
    const previous=orders.find(o=>o.requestId===requestId);if(previous)return {order:previous,created:false};
-   const order={id:randomUUID(),requestId,table,items:clean,status:'new',paid:false,createdAt:new Date().toISOString()};
+   if(!catalog.tables.includes(table))fail(400,'Bàn không còn tồn tại. Hãy chọn lại bàn.');
+   const clean=[];
+   for(const item of items){const dish=catalog.menu.find(m=>m.id===item?.id&&m.active!==false);if(!dish||!Number.isInteger(item.qty)||item.qty<1||item.qty>99||typeof item.note!=='string'||item.note.length>200)fail(400,'Món không còn bán hoặc số lượng/ghi chú không hợp lệ.');if(item.price!==undefined&&item.price!==dish.price)fail(409,'Giá món đã thay đổi. Vui lòng kiểm tra giỏ món và lưu lại.');clean.push({id:dish.id,name:dish.name,price:dish.price,qty:item.qty,note:item.note});}
+   const order={id:randomUUID(),requestId,table,items:clean,paid:false,createdAt:new Date().toISOString()};
    orders.push(order);return {order,created:true};
  });res.status(result.created?201:200).json(result.order);
-});
-app.patch('/api/orders/:id',async (req,res)=>{
- const order=await store.mutate(orders=>{
-   const o=orders.find(o=>o.id===req.params.id);if(!o)return fail(404,'Không tìm thấy phiếu.');
-   const next={new:'cooking',cooking:'ready'};
-   if(!next[o.status]||req.body?.status!==next[o.status])return fail(400,'Trạng thái không hợp lệ.');
-   o.status=req.body.status;return o;
- });res.json(order);
 });
 app.post('/api/checkout',async (req,res)=>{
  const ids=req.body?.ids;if(!Array.isArray(ids)||!ids.length||ids.some(id=>typeof id!=='string'))return fail(400,'Danh sách phiếu không hợp lệ.');
  await store.mutate(orders=>{
    const selected=orders.filter(o=>ids.includes(o.id));
    if(selected.length!==ids.length||new Set(selected.map(o=>o.table)).size!==1)return fail(400,'Danh sách phiếu không hợp lệ.');
-   selected.forEach(o=>{if(!o.paid){o.paid=true;o.paidAt=new Date().toISOString();}});
+   const paymentId=randomUUID(),paidAt=new Date().toISOString();
+   selected.forEach(o=>{if(!o.paid){o.paid=true;o.paidAt=paidAt;o.paymentId=paymentId;}});
  });res.json({ok:true});
 });
+app.get(['/admin','/admin/'],(_,res)=>res.sendFile(path.join(__dirname,'public/admin.html')));
 app.use(express.static(path.join(__dirname,'public')));
 app.use('/api',(_,res)=>res.status(404).json({error:'API không tồn tại.'}));
 app.use((error,req,res,next)=>{
