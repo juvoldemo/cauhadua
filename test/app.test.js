@@ -35,6 +35,8 @@ test('local routes, concurrent orders, persistence and checkout',async()=>{
     await app.stop();app=await start({ORDER_DB:file});
     const response=await app.request('/api/orders');assert.equal(response.headers.get('cache-control'),'no-store');
     assert.equal((await response.json()).length,5);
+    const history=await (await app.request('/api/orders?history=all')).json();
+    assert.equal(history.length,6);assert.equal(history.find(o=>o.id===id).paid,true);assert.ok(history.find(o=>o.id===id).paidAt);assert.ok(history.find(o=>o.id===id).paymentId);
     const persisted=JSON.parse(fs.readFileSync(file,'utf8')).orders;assert.equal(persisted.length,6);
     assert.equal(persisted.find(o=>o.id===id).paid,true);
   }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}

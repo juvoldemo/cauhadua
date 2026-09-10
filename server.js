@@ -13,8 +13,8 @@ app.get('/api/images/:id',async(req,res)=>{
  const data=await store.getImage(req.params.id);if(!data)return res.sendStatus(404);
  const [header,content]=data.split(',');res.set({'Cache-Control':'public, max-age=31536000, immutable','Content-Type':header.slice(5).split(';')[0],'X-Content-Type-Options':'nosniff'}).send(Buffer.from(content,'base64'));
 });
-// Staff only need open orders; paid history and revenue are available through admin.
-app.get('/api/orders',async (_,res)=>res.json((await store.read()).filter(o=>!o.paid)));
+// Staff can request settled orders for invoice history.
+app.get('/api/orders',async (req,res)=>res.json((await store.read()).filter(o=>req.query.history==='all'||!o.paid)));
 app.post('/api/orders',async (req,res)=>{
  const {table,items,requestId}=req.body||{};
  if(!Number.isInteger(table)||!Array.isArray(items)||!items.length||items.length>100) return res.status(400).json({error:'Thông tin phiếu không hợp lệ.'});

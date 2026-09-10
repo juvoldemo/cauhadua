@@ -28,14 +28,30 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
    const staff=await context.newPage();staff.on('pageerror',e=>errors.push(e.message));await staff.goto(base);
    await staff.locator('#table option[value="13"]').waitFor({state:'attached'});await staff.locator('#table').selectOption('13');
    await staff.locator('#search').fill('Món thử');await staff.locator('.dish img').waitFor();await staff.locator('[data-plus]').click();await staff.locator('#opencart').click();await staff.locator('#send').click();await staff.locator('#overlay .sheet').waitFor({state:'detached'});
-   await staff.locator('[data-view=bills]').click();await staff.locator('#checkout').waitFor();
+   await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill="open:13"]').click();await staff.locator('#checkout').waitFor();
    staff.once('dialog',d=>d.accept());await staff.locator('#checkout').click();await staff.locator('#checkout').waitFor({state:'detached'});
+   await staff.locator('[data-bill^="paid:13:"]').click();assert.match(await staff.locator('.panel').textContent(),/45.000đ/);assert.equal(await staff.locator('#checkout').count(),0);await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill^="paid:13:"]').waitFor();
    await admin.locator('[data-view=reports]').click();await admin.locator('.revenue-card h2').filter({hasText:'45.000đ'}).waitFor();
    await admin.locator('[data-period=week]').click();await admin.locator('.revenue-card').waitFor();await admin.locator('[data-period=month]').click();await admin.locator('.revenue-card').waitFor();
    for(const width of [320,390]){await admin.setViewportSize({width,height:844});assert.ok(await admin.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
    await admin.screenshot({path:path.join(os.tmpdir(),'chd-admin-preview.png'),fullPage:true});
    await admin.locator('[data-view=menu]').click();await admin.locator('[data-edit]').first().click();await admin.locator('[name=price]').fill('55000');await admin.locator('#dish-form .primary').click();await admin.locator('#editor .sheet').waitFor({state:'detached'});
    await admin.locator('[data-view=reports]').click();await admin.locator('.revenue-card h2').filter({hasText:'45.000đ'}).waitFor();
+   const menu=await (await context.request.get(base+'/api/menu')).json();
+   const create=async(table,id)=> (await context.request.post(base+'/api/orders',{data:{table,requestId:id,items:[{id:menu[0].id,qty:1,note:'history-test'}]}})).json();
+   const first=await create(13,'history-first'),second=await create(13,'history-second'),other=await create(1,'history-other');
+   await context.request.post(base+'/api/checkout',{data:{ids:[first.id,second.id]}});
+   await context.request.post(base+'/api/checkout',{data:{ids:[other.id]}});
+   await staff.reload();await staff.locator('[data-view=bills]').click();
+   await staff.locator('[data-bill^="paid:1:"]').waitFor();
+   assert.equal(await staff.locator('[data-bill^="paid:13:"]').count(),2);
+   assert.equal(await staff.locator('.invoice-card').count(),3);
+   const history=await (await context.request.get(base+'/api/orders?history=all')).json();
+   const payment=history.find(o=>o.id===first.id).paymentId;
+   await staff.locator('[data-bill="paid:13:'+payment+'"]').click();
+   assert.equal(await staff.locator('.orderline').count(),2);
+   assert.match(await staff.locator('.panel').textContent(),/history-test/);
+   for(const width of [320,390]){await staff.setViewportSize({width,height:844});assert.ok(await staff.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
    assert.deepEqual(errors,[]);console.log('PASS: mobile login, add table, upload photo, create/edit dish, staff order/checkout, revenue and responsive layout.');console.log('Screenshot: '+path.join(os.tmpdir(),'chd-admin-preview.png'));
  }finally{
    if(browser)await browser.close();const exited=once(child,'exit');child.kill();await exited;
