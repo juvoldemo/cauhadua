@@ -53,9 +53,9 @@ Khi sao lưu local, lưu cả `data/orders.json` và thư mục `data/images/`. 
 
 ## In bill trên điện thoại
 
-Chọn bàn trong **Hóa đơn**, bấm **In bill** để mở hộp thoại in hệ thống. Mẫu in dùng giấy cuộn **58 mm**, vùng chữ **50 mm**, lề 4 mm mỗi bên. Bill có bảng STT, tên món, số lượng, đơn giá, thành tiền và tổng tiền; chiều dài trang được tính từ nội dung từng bill để tránh khoảng trắng dài như A4. Không in các nút và giao diện app.
+Chọn bàn trong **Hóa đơn**, bấm **In bill** để mở hộp thoại in hệ thống. Mẫu in dùng giấy cuộn **80 mm**, vùng chữ **72 mm**, lề 4 mm mỗi bên. Bill có bảng STT, tên món, số lượng, đơn giá, thành tiền và tổng tiền; chiều dài trang được tính từ nội dung từng bill để tránh khoảng trắng dài như A4. Không in các nút và giao diện app.
 
-Trong hộp thoại in, chọn đúng **máy in bill** đã kết nối Wi-Fi/Bluetooth, chọn khổ **58 mm / Receipt / Roll** trong tùy chọn của driver, tỷ lệ **100%**, tắt **đầu trang và chân trang** (URL, số trang). Không chọn A4. Nếu driver không hỗ trợ khổ tùy chỉnh do web gửi, cần chọn hoặc tạo khổ giấy 58 mm trong cấu hình máy in; chiều dài giấy/cắt giấy phụ thuộc driver và máy in. CSS không thể ép một máy in A4 thành máy in nhiệt.
+Trong hộp thoại in, chọn đúng **máy in bill** đã kết nối Wi-Fi/Bluetooth, chọn khổ **80 mm / Receipt / Roll** trong tùy chọn của driver, tỷ lệ **100%**, tắt **đầu trang và chân trang** (URL, số trang). Không chọn A4. Nếu driver không hỗ trợ khổ tùy chỉnh do web gửi, cần chọn hoặc tạo khổ giấy 80 mm trong cấu hình máy in; chiều dài giấy/cắt giấy phụ thuộc driver và máy in. CSS không thể ép một máy in A4 thành máy in nhiệt.
 
 Web dùng hộp thoại in trình duyệt, chưa có chế độ in thẳng không cần xác nhận. Máy Wi-Fi/Bluetooth phải được hệ điều hành hoặc dịch vụ in trên điện thoại hỗ trợ; để tích hợp in trực tiếp ESC/POS cần biết model máy và giao thức kết nối cụ thể. In không tự đánh dấu thanh toán. Nhấn **Xác nhận đã thanh toán** sau khi thu tiền. Mã đơn trên bill lấy từ phiếu gọi món đầu tiên; app không tự ghi tiền nhận/tiền thừa khi chưa có dữ liệu đó.
 

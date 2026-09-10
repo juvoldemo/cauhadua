@@ -1,5 +1,5 @@
 /* Same physical dimensions during measurement and printing. */
-#print .receipt{width:50mm;color:#000;background:#fff;font:10px/1.35 Arial,Helvetica,sans-serif;text-align:left;overflow-wrap:anywhere}
+#print .receipt{width:72mm;color:#000;background:#fff;font:10px/1.35 Arial,Helvetica,sans-serif;text-align:left;overflow-wrap:anywhere}
 #print .receipt *{box-sizing:border-box}
 #print .receipt h2{font-size:12px;line-height:1.35;text-align:center;margin:0 0 3mm;font-weight:700}
 #print .receipt h3{font-size:12px;line-height:1.3;text-align:center;margin:3mm 0 1mm}
@@ -21,11 +21,11 @@
 #print .receipt-total{display:flex;align-items:center;justify-content:space-between;gap:2mm;padding:2mm 0;border-top:.2mm solid #000;font-size:12px;font-weight:700}
 #print .receipt-subtotal{display:flex;justify-content:space-between;gap:2mm;padding:1mm 0 2mm;font-weight:700}
 #print .receipt-footer{text-align:center;border-top:.2mm dashed #000;margin-top:4mm;padding-top:3mm;font-size:11px;font-weight:700}
-#print.measuring{display:block;position:absolute;left:-10000px;top:0;visibility:hidden;width:50mm;margin:0;padding:0}
+#print.measuring{display:block;position:absolute;left:-10000px;top:0;visibility:hidden;width:72mm;margin:0;padding:0}
 @media print{
- @page{size:58mm 160mm;margin:4mm}
+ @page{size:80mm 160mm;margin:4mm}
  html,body{margin:0!important;padding:0!important;background:#fff!important;min-height:0!important;height:auto!important}
  #app,#overlay,#toast,#admin,#editor{display:none!important}
- #print,#print.measuring{display:block!important;position:static!important;visibility:visible!important;width:50mm;margin:0!important;padding:0!important}
+ #print,#print.measuring{display:block!important;position:static!important;visibility:visible!important;width:72mm;margin:0!important;padding:0!important}
  #print .receipt{print-color-adjust:exact;-webkit-print-color-adjust:exact}
 }

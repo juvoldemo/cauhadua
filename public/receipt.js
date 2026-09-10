@@ -15,13 +15,13 @@ export async function printReceipt(orders,table){
  root.innerHTML=receiptMarkup(orders,table);
  root.classList.add('measuring');
  try{
-   // CSS requires two concrete dimensions, not the invalid "58mm auto".
+   // CSS requires two concrete dimensions, not the invalid "80mm auto".
    // Measure the receipt at its printable width to avoid an A4-sized blank tail.
    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
    const height=Math.max(60,Math.ceil(root.querySelector('.receipt').getBoundingClientRect().height*25.4/96)+10);
    let pageStyle=document.querySelector('#receipt-page-size');
    if(!pageStyle){pageStyle=document.createElement('style');pageStyle.id='receipt-page-size';document.head.append(pageStyle);}
-   pageStyle.textContent=`@media print { @page { size:58mm ${height}mm; margin:4mm; } }`;
+   pageStyle.textContent=`@media print { @page { size:80mm ${height}mm; margin:4mm; } }`;
  }finally{root.classList.remove('measuring');}
  window.print();
 }
