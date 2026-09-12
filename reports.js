@@ -8,7 +8,7 @@ function report(orders,period='day',date=localDate(new Date())){
   const bins=Array.from({length:period==='day'?24:(end-start)/DAY},(_,i)=>({label:period==='day'?String(i).padStart(2,'0')+'h':new Date(start+i*DAY).toISOString().slice(0,10),revenue:0}));
   let revenue=0,quantity=0;const payments=new Set(),best=new Map();
   for(const o of orders){
-    if(!o.paid||!o.paidAt||!Number.isFinite(Date.parse(o.paidAt)))continue;
+    if(o.deletedAt||!o.paid||!o.paidAt||!Number.isFinite(Date.parse(o.paidAt)))continue;
     const time=Date.parse(o.paidAt)+OFFSET;
     if(time>=start&&time<end){
       const amount=o.items.reduce((sum,i)=>sum+i.qty*i.price,0);

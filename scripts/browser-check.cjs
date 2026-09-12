@@ -72,7 +72,16 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
    await staff.locator('.history-head').waitFor();assert.equal(await staff.locator('[data-bill="open:2"]').count(),0);
    await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill^="paid:1:"]').click();assert.equal(await staff.locator('[data-remove-order]').count(),0);
    assert.equal(await staff.locator('[data-quantity-order]').count(),0);
-   assert.deepEqual(errors,[]);console.log('PASS: mobile login, add table, upload photo, create/edit dish, staff order/checkout, quantity changes, revenue and responsive layout.');console.log('Screenshot: '+path.join(os.tmpdir(),'chd-admin-preview.png'));
+   await create(2,'delete-invoice-first');await create(2,'delete-invoice-second');
+   await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill="open:2"]').click();
+   assert.equal(await staff.locator('#deletebill').textContent(),'Xoá hoá đơn');
+   staff.once('dialog',d=>d.dismiss());await staff.locator('#deletebill').click();assert.equal(await staff.locator('.orderline').count(),2);
+   staff.once('dialog',d=>d.accept());await staff.locator('#deletebill').click();await staff.locator('.history-head').waitFor();
+   assert.equal(await staff.locator('[data-bill="open:2"]').count(),0);assert.equal(await staff.locator('.invoice-card').count(),3);
+   await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill^="paid:1:"]').click();
+   staff.once('dialog',d=>d.accept());await staff.locator('#deletebill').click();await staff.locator('.history-head').waitFor();
+   assert.equal(await staff.locator('[data-bill^="paid:1:"]').count(),0);assert.equal(await staff.locator('.invoice-card').count(),2);
+   assert.deepEqual(errors,[]);console.log('PASS: mobile login, add table, upload photo, create/edit dish, staff order/checkout, quantity changes, invoice deletion, revenue and responsive layout.');console.log('Screenshot: '+path.join(os.tmpdir(),'chd-admin-preview.png'));
  }finally{
    if(browser)await browser.close();const exited=once(child,'exit');child.kill();await exited;
    const file=path.join(dir,'orders.json');if(fs.existsSync(file))fs.unlinkSync(file);const images=path.join(dir,'images');if(fs.existsSync(images)){for(const name of fs.readdirSync(images))fs.unlinkSync(path.join(images,name));fs.rmdirSync(images);}fs.rmdirSync(dir);

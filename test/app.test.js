@@ -115,6 +115,33 @@ test('admin authorization, catalog, photos, table management and price snapshots
  }
 });
 
+test('invoice deletion is atomic, scoped, persistent and preserves request deduplication',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'chd-invoice-')),file=path.join(dir,'orders.json');
+ let app=await start({ORDER_DB:file});
+ try{
+  const body={table:2,requestId:'invoice-first',items:[{id:'1',qty:1,note:''}]};
+  const first=await (await app.request('/api/orders','POST',body)).json();
+  const second=await (await app.request('/api/orders','POST',{...body,requestId:'invoice-second'})).json();
+  const other=await (await app.request('/api/orders','POST',{...body,table:1,requestId:'invoice-other'})).json();
+  const remove=expectedOrders=>app.request('/api/invoices','DELETE',{key:'open:2',expectedOrders});
+  assert.equal((await remove([])).status,400);
+  assert.equal((await remove([first])).status,409);
+  assert.equal((await (await app.request('/api/orders')).json()).length,3);
+  assert.equal((await remove([first,second])).status,200);
+  await app.stop();app=await start({ORDER_DB:file});
+  assert.deepEqual(await (await app.request('/api/orders?history=all')).json(),[other]);
+  assert.equal((await app.request('/api/orders','POST',body)).status,200);
+  assert.deepEqual(await (await app.request('/api/orders')).json(),[other]);
+  await app.request('/api/checkout','POST',{ids:[other.id]});
+  const paid=await (await app.request('/api/orders?history=all')).json();
+  assert.equal((await app.request('/api/invoices','DELETE',{key:'open:1',expectedOrders:[other]})).status,404);
+  assert.equal((await app.request('/api/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid})).status,200);
+  assert.deepEqual(await (await app.request('/api/orders?history=all')).json(),[]);
+  const report=require('../reports').report(JSON.parse(fs.readFileSync(file,'utf8')).orders);
+  assert.equal(report.revenue,0);assert.equal(report.payments,0);assert.deepEqual(report.bestsellers,[]);
+ }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}
+});
+
 test('legacy local order arrays remain readable after catalog edits',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'chd-legacy-')),file=path.join(dir,'orders.json');
  const legacy=[{id:'old',table:1,items:[{id:'1',qty:1,price:179000,name:'Combo Lẩu 1'}],paid:true,paidAt:'2026-09-10T01:00:00Z'}];
