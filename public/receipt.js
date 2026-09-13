@@ -1,3 +1,4 @@
+import {usbConfigured,printUsbReceipt} from './usb-printer.js';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const amount=n=>n.toLocaleString('vi-VN');
 const time=d=>d.toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit'});
@@ -19,6 +20,7 @@ export function receiptMarkup(orders,table,now=new Date()){
 
 export async function printReceipt(orders,table){
  if(!orders.length)throw new Error('Bàn chưa có món để in.');
+ if(usbConfigured())return printUsbReceipt(orders,table);
  const root=document.querySelector('#print');
  root.innerHTML=receiptMarkup(orders,table);
  root.classList.add('measuring');

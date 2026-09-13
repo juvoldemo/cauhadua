@@ -57,9 +57,19 @@ Chọn bàn trong **Hóa đơn**, bấm **In bill** để mở hộp thoại in 
 
 Trong hộp thoại in, chọn đúng **máy in bill** đã kết nối Wi-Fi/Bluetooth, chọn khổ **80 mm / Receipt / Roll** trong tùy chọn của driver, tỷ lệ **100%**, tắt **đầu trang và chân trang** (URL, số trang). Không chọn A4. Nếu driver không hỗ trợ khổ tùy chỉnh do web gửi, cần chọn hoặc tạo khổ giấy 80 mm trong cấu hình máy in; chiều dài giấy/cắt giấy phụ thuộc driver và máy in. CSS không thể ép một máy in A4 thành máy in nhiệt.
 
-Web dùng hộp thoại in trình duyệt, chưa có chế độ in thẳng không cần xác nhận. Máy Wi-Fi/Bluetooth phải được hệ điều hành hoặc dịch vụ in trên điện thoại hỗ trợ; để tích hợp in trực tiếp ESC/POS cần biết model máy và giao thức kết nối cụ thể. In không tự đánh dấu thanh toán. Nhấn **Xác nhận đã thanh toán** sau khi thu tiền. Mã đơn trên bill lấy từ phiếu gọi món đầu tiên; app không tự ghi tiền nhận/tiền thừa khi chưa có dữ liệu đó.
+Khi chưa chọn máy in USB, web dùng hộp thoại in trình duyệt. Máy Wi-Fi/Bluetooth phải được hệ điều hành hoặc dịch vụ in trên điện thoại hỗ trợ; để tích hợp in trực tiếp ESC/POS cần biết model máy và giao thức kết nối cụ thể. In không tự đánh dấu thanh toán. Nhấn **Xác nhận đã thanh toán** sau khi thu tiền. Mã đơn trên bill lấy từ phiếu gọi món đầu tiên; app không tự ghi tiền nhận/tiền thừa khi chưa có dữ liệu đó.
 
 ## Phạm vi
 
 Giao diện mobile rộng tối đa 480 px. Với combo có lựa chọn lẩu, ghi lựa chọn vào ô ghi chú. Đơn đã lưu không chỉnh sửa; gọi bổ sung bằng đơn mới. Admin và API quản trị yêu cầu mật khẩu; trang gọi món/thanh toán của nhân viên vẫn dùng cơ chế truy cập bằng link như trước, chưa có tài khoản nhân viên riêng. Font Google có fallback sans-serif khi mất mạng.
 # cauhadua
+
+## In USB trên Chrome Android (iPOS ITP5)
+
+Mở website bằng HTTPS trên POS, vào một hóa đơn, chọn **Kết nối máy in USB**, chọn đúng ITP5 và chấp nhận quyền USB của Chrome/Android. Sau đó **In bill** gửi ESC/POS trực tiếp, không mở hộp thoại in hệ thống. Lựa chọn được lưu riêng trên trình duyệt; khi mất quyền hoặc đổi máy, kết nối lại. Chọn **Dùng hộp thoại in hệ thống** để quay về cách in cũ.
+
+Bill USB dùng ảnh chữ tiếng Việt rộng 576 điểm, giấy 80 mm, gửi từng dòng để giảm bộ nhớ trên POS. Đây là cấu hình ESC/POS cần thử trên ITP5 thực tế, chưa xác nhận firmware hỗ trợ lệnh ảnh GS v 0/cắt giấy. Không tự in lại khi truyền lỗi vì giấy có thể đã in một phần. Gửi USB thành công không xác nhận giấy đã in hay còn giấy.
+
+Chrome cần hỗ trợ WebUSB và Android cần cho phép truy cập thiết bị. HTTP qua IP nội bộ không dùng được WebUSB. Nếu không thấy máy hoặc không chiếm được cổng USB, kiểm tra cáp, quyền và đóng ứng dụng đang giữ máy in; nếu vẫn lỗi cần cầu nối Android phù hợp. Không cần cấu hình máy in trong .env.
+
+Tham khảo: https://developer.chrome.com/docs/capabilities/usb và https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/gs_lv_0.html
