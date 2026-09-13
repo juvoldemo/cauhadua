@@ -6,13 +6,20 @@ const path = require('node:path');
 const {spawn} = require('node:child_process');
 const {once} = require('node:events');
 
-async function start(env) {
+async function start(env, authenticate=true) {
   const child=spawn(process.execPath,['-e',"const server=require('./server').listen(0,'127.0.0.1',()=>console.log(server.address().port));"],{
-    cwd:path.join(__dirname,'..'),env:{...process.env,DATABASE_URL:'',POSTGRES_URL:'',VERCEL:'',ADMIN_PASSWORD:'',...env},stdio:['ignore','pipe','inherit']
+    cwd:path.join(__dirname,'..'),env:{...process.env,DATABASE_URL:'',POSTGRES_URL:'',VERCEL:'',ADMIN_PASSWORD:'test-setup-admin',...env},stdio:['ignore','pipe','inherit']
   });
   const [data]=await once(child.stdout,'data');
   const base='http://127.0.0.1:'+String(data).trim();
-  return {request:async (route,method='GET',body,password)=>fetch(base+route,{method,headers:{'Content-Type':'application/json',...(password?{Authorization:'Bearer '+encodeURIComponent(password)}:{})},body:body===undefined?undefined:JSON.stringify(body)}),stop:async()=>{const exited=once(child,'exit');child.kill();await exited;}};
+  let cookie='';
+  if(authenticate&&!env.VERCEL){
+    const headers={'Content-Type':'application/json',Authorization:'Bearer '+encodeURIComponent(env.ADMIN_PASSWORD||'test-setup-admin')};
+    await fetch(base+'/api/admin/employees',{method:'POST',headers,body:JSON.stringify({name:'Test Staff',code:'000123456789'})});
+    const login=await fetch(base+'/api/staff/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'000123456789'})});
+    cookie=login.headers.get('set-cookie')?.split(';')[0]||'';
+  }
+  return {base,request:async (route,method='GET',body,password)=>fetch(base+route,{method,headers:{'Content-Type':'application/json',Cookie:cookie,...(password?{Authorization:'Bearer '+encodeURIComponent(password)}:{})},body:body===undefined?undefined:JSON.stringify(body)}),stop:async()=>{const exited=once(child,'exit');child.kill();await exited;}};
 }
 
 test('local routes, concurrent orders, persistence and checkout',async()=>{
@@ -35,7 +42,7 @@ test('local routes, concurrent orders, persistence and checkout',async()=>{
     await app.stop();app=await start({ORDER_DB:file});
     const response=await app.request('/api/orders');assert.equal(response.headers.get('cache-control'),'no-store');
     assert.equal((await response.json()).length,5);
-    const history=await (await app.request('/api/orders?history=all')).json();
+    const history=await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json();
     assert.equal(history.length,6);assert.equal(history.find(o=>o.id===id).paid,true);assert.ok(history.find(o=>o.id===id).paidAt);assert.ok(history.find(o=>o.id===id).paymentId);
     const persisted=JSON.parse(fs.readFileSync(file,'utf8')).orders;assert.equal(persisted.length,6);
     assert.equal(persisted.find(o=>o.id===id).paid,true);
@@ -61,11 +68,11 @@ test('quantity edits persist, preserve item snapshots and reject stale or paid c
  }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}
 });
 
-test('Vercel without a database serves menu but never pretends to save orders',async()=>{
+test('Vercel without a database never permits staff access or pretends to save orders',async()=>{
   const app=await start({VERCEL:'1'});
   try{
     assert.equal((await app.request('/')).status,200);
-    assert.equal((await (await app.request('/api/menu')).json()).length,55);
+    assert.equal((await app.request('/api/menu')).status,503);
     const response=await app.request('/api/orders');assert.equal(response.status,503);
     assert.match((await response.json()).error,/DATABASE_URL/);
     assert.equal((await app.request('/api/orders','POST',{table:1,requestId:'cloud',items:[{id:'1',qty:1,note:''}]})).status,503);
@@ -129,14 +136,21 @@ test('invoice deletion is atomic, scoped, persistent and preserves request dedup
   assert.equal((await (await app.request('/api/orders')).json()).length,3);
   assert.equal((await remove([first,second])).status,200);
   await app.stop();app=await start({ORDER_DB:file});
-  assert.deepEqual(await (await app.request('/api/orders?history=all')).json(),[other]);
+  assert.deepEqual(await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json(),[other]);
   assert.equal((await app.request('/api/orders','POST',body)).status,200);
   assert.deepEqual(await (await app.request('/api/orders')).json(),[other]);
   await app.request('/api/checkout','POST',{ids:[other.id]});
-  const paid=await (await app.request('/api/orders?history=all')).json();
+  const paid=await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json();
   assert.equal((await app.request('/api/invoices','DELETE',{key:'open:1',expectedOrders:[other]})).status,404);
-  assert.equal((await app.request('/api/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid})).status,200);
   assert.deepEqual(await (await app.request('/api/orders?history=all')).json(),[]);
+  assert.equal((await app.request('/api/admin/orders')).status,401);
+  assert.equal((await app.request('/api/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid})).status,403);
+  assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid})).status,401);
+  const retry=await (await app.request('/api/orders','POST',{...body,table:1,requestId:'invoice-other'})).json();assert.equal(retry.alreadySubmitted,true);assert.equal(retry.items,undefined);
+  assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:[]},'test-setup-admin')).status,400);
+  assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:[other]},'test-setup-admin')).status,409);
+  assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid},'test-setup-admin')).status,200);
+  assert.deepEqual(await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json(),[]);
   const report=require('../reports').report(JSON.parse(fs.readFileSync(file,'utf8')).orders);
   assert.equal(report.revenue,0);assert.equal(report.payments,0);assert.deepEqual(report.bestsellers,[]);
  }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}
@@ -163,14 +177,54 @@ test('remove confirmed items, reject stale edits and paid edits, preserve empty 
   let remaining=await (await app.request('/api/orders')).json();
   assert.equal(remaining[0].items.length,1);assert.equal(remaining[0].items[0].note,'second');
   assert.equal((await app.request(route,'DELETE',{expectedItems:remaining[0].items})).status,200);
-  assert.deepEqual(await (await app.request('/api/orders?history=all')).json(),[]);
+  assert.deepEqual(await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json(),[]);
   assert.equal((await app.request('/api/checkout','POST',{ids:[order.id]})).status,400);
   assert.equal((await app.request('/api/orders','POST',body)).status,200);
   assert.deepEqual(await (await app.request('/api/orders')).json(),[]);
   const paid=await (await app.request('/api/orders','POST',{...body,requestId:'paid-items'})).json();
   await app.request('/api/checkout','POST',{ids:[paid.id]});
   assert.equal((await app.request('/api/orders/'+paid.id+'/items/0','DELETE',{expectedItems:paid.items})).status,409);
-  remaining=await (await app.request('/api/orders?history=all')).json();
+  remaining=await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json();
   assert.equal(remaining[0].items.length,2);
+ }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}
+});
+
+test('employee codes, protected routes, fixed eight-hour sessions, revocation and restart',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'chd-auth-')),file=path.join(dir,'orders.json');
+ const password='auth-test-admin';let app=await start({ORDER_DB:file,ADMIN_PASSWORD:password},false);
+ const admin=(route,method='GET',body)=>app.request('/api/admin/employees'+route,method,body,password);
+ const login=code=>app.request('/api/staff/session','POST',{code});
+ const authorized=(route,cookie,method='GET',body)=>fetch(app.base+route,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+ try{
+  for(const route of ['/api/menu','/api/catalog','/api/orders','/api/orders?history=all'])assert.equal((await app.request(route)).status,401);
+  for(const [route,method] of [['/api/orders','POST'],['/api/checkout','POST'],['/api/invoices','DELETE'],['/api/orders/x/items/0','PATCH'],['/api/orders/x/items/0','DELETE']])assert.equal((await app.request(route,method,{})).status,401);
+  assert.equal((await app.request('/api/admin/employees')).status,401);
+  for(const code of ['',123,'12a','12 3','-1'])assert.equal((await admin('','POST',{name:'An',code})).status,400);
+  const code='00'+'1234567890'.repeat(100);
+  const created=await admin('','POST',{name:'Nguyễn Văn An',code});assert.equal(created.status,201);const employee=await created.json();
+  assert.equal((await admin('','POST',{name:'B?nh',code})).status,409);
+  assert.equal((await login(code.slice(2))).status,401);
+  const before=Date.now(),response=await login(code);assert.equal(response.status,200);
+  const session=await response.json(),cookie=response.headers.get('set-cookie').split(';')[0];
+  assert.ok(session.expiresAt>=before+8*3600000&&session.expiresAt<=Date.now()+8*3600000);
+  assert.match(response.headers.get('set-cookie'),/HttpOnly/);assert.match(response.headers.get('set-cookie'),/SameSite=Strict/);
+  assert.equal(session.employee.name,'Nguyễn Văn An');assert.equal(JSON.stringify(await (await admin('')).json()).includes('codeHash'),false);
+  assert.equal(fs.readFileSync(file,'utf8').includes(code),false);
+  assert.equal((await authorized('/api/menu',cookie)).status,200);
+  assert.equal((await authorized('/api/admin/employees',cookie)).status,401);
+  const order=await (await authorized('/api/orders',cookie,'POST',{table:1,requestId:'employee-order',items:[{id:'1',qty:1,note:''}]})).json();assert.equal(order.employee.id,employee.id);
+  await app.stop();app=await start({ORDER_DB:file,ADMIN_PASSWORD:password},false);
+  assert.equal((await (await authorized('/api/staff/session',cookie)).json()).expiresAt,session.expiresAt);
+  const state=JSON.parse(fs.readFileSync(file));state.auth.sessions[0].expiresAt=Date.now()-1;fs.writeFileSync(file,JSON.stringify(state));
+  assert.equal((await authorized('/api/orders',cookie)).status,401);
+  const renewed=await login(code),cookie2=renewed.headers.get('set-cookie').split(';')[0];
+  assert.equal((await admin('/'+employee.id,'PUT',{name:'An',code:'0007'})).status,200);
+  assert.equal((await authorized('/api/orders',cookie2)).status,401);assert.equal((await login(code)).status,401);
+  const next=await login('0007'),cookie3=next.headers.get('set-cookie').split(';')[0];
+  assert.equal((await authorized('/api/staff/session',cookie3,'DELETE')).status,200);
+  assert.equal((await authorized('/api/orders',cookie3)).status,401);
+  const last=await login('0007'),cookie4=last.headers.get('set-cookie').split(';')[0];
+  assert.equal((await admin('/'+employee.id,'DELETE')).status,200);
+  assert.equal((await authorized('/api/orders',cookie4)).status,401);assert.equal((await login('0007')).status,401);
  }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}
 });

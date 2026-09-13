@@ -14,6 +14,7 @@ async function database() {
       await sql`CREATE TABLE IF NOT EXISTS chd_order_state (id integer PRIMARY KEY CHECK (id = 1), orders jsonb NOT NULL)`;
       await sql`INSERT INTO chd_order_state (id, orders) VALUES (1, '[]'::jsonb) ON CONFLICT DO NOTHING`;
       await sql`ALTER TABLE chd_order_state ADD COLUMN IF NOT EXISTS catalog jsonb`;
+      await sql`ALTER TABLE chd_order_state ADD COLUMN IF NOT EXISTS auth jsonb`;
       await sql`CREATE TABLE IF NOT EXISTS chd_images (id text PRIMARY KEY, content text NOT NULL)`;
     })().catch(error => {initialized = undefined; throw error;});
   }
@@ -23,22 +24,23 @@ async function database() {
 function localState() {
   if (process.env.VERCEL) throw unavailable();
   const raw=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[];
-  return Array.isArray(raw)?{orders:raw,catalog:seed()}:{orders:raw.orders,catalog:raw.catalog||seed()};
+  return Array.isArray(raw)?{orders:raw,catalog:seed(),auth:{employees:[],sessions:[]}}:{orders:raw.orders,catalog:raw.catalog||seed(),auth:raw.auth||{employees:[],sessions:[]}};
 }
 async function readState() {
   if (!databaseUrl) return localState();
   const db = await database();
-  const [state] = await db`SELECT orders, catalog FROM chd_order_state WHERE id = 1`;
-  return {orders:state.orders,catalog:state.catalog||seed()};
+  const [state] = await db`SELECT orders, catalog, auth FROM chd_order_state WHERE id = 1`;
+  return {orders:state.orders,catalog:state.catalog||seed(),auth:state.auth||{employees:[],sessions:[]}};
 }
 async function mutateState(update) {
   if (databaseUrl) {
     const db = await database();
     return db.begin(async tx => {
-      const [state] = await tx`SELECT orders, catalog FROM chd_order_state WHERE id = 1 FOR UPDATE`;
+      const [state] = await tx`SELECT orders, catalog, auth FROM chd_order_state WHERE id = 1 FOR UPDATE`;
       state.catalog ||= seed();
+      state.auth ||= {employees:[],sessions:[]};
       const result = update(state);
-      await tx`UPDATE chd_order_state SET orders = ${tx.json(state.orders)}, catalog = ${tx.json(state.catalog)} WHERE id = 1`;
+      await tx`UPDATE chd_order_state SET orders = ${tx.json(state.orders)}, catalog = ${tx.json(state.catalog)}, auth = ${tx.json(state.auth)} WHERE id = 1`;
       return result;
     });
   }

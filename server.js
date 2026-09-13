@@ -7,24 +7,26 @@ app.use(express.json({limit:'300kb'}));
 app.use('/api', (_,res,next)=>{res.set('Cache-Control','no-store');next();});
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 app.use('/api/admin',require('./admin-api'));
+app.use('/api/staff',require('./staff-auth').router);
+app.use(['/api/catalog','/api/menu','/api/orders','/api/invoices','/api/checkout'],require('./staff-auth').requireStaff);
 app.get('/api/catalog',async(_,res)=>{const catalog=await store.readCatalog();res.json({...catalog,menu:catalog.menu.filter(d=>d.active!==false)});});
 app.get('/api/menu',async(_,res)=>res.json((await store.readCatalog()).menu.filter(d=>d.active!==false)));
 app.get('/api/images/:id',async(req,res)=>{
  const data=await store.getImage(req.params.id);if(!data)return res.sendStatus(404);
  const [header,content]=data.split(',');res.set({'Cache-Control':'public, max-age=31536000, immutable','Content-Type':header.slice(5).split(';')[0],'X-Content-Type-Options':'nosniff'}).send(Buffer.from(content,'base64'));
 });
-// Staff can request settled orders for invoice history.
-app.get('/api/orders',async (req,res)=>res.json((await store.read()).filter(o=>o.items.length&&(req.query.history==='all'||!o.paid))));
+// Staff only receive open orders, regardless of query parameters.
+app.get('/api/orders',async (req,res)=>res.json((await store.read()).filter(o=>o.items.length&&!o.paid)));
 app.post('/api/orders',async (req,res)=>{
  const {table,items,requestId}=req.body||{};
  if(!Number.isInteger(table)||!Array.isArray(items)||!items.length||items.length>100) return res.status(400).json({error:'Thông tin phiếu không hợp lệ.'});
  if(typeof requestId!=='string'||!requestId.length||requestId.length>100) return res.status(400).json({error:'Thiếu mã yêu cầu.'});
  const result=await store.mutateState(({orders,catalog})=>{
-   const previous=orders.find(o=>o.requestId===requestId);if(previous)return {order:previous,created:false};
+   const previous=orders.find(o=>o.requestId===requestId);if(previous){if(previous.paid)return {order:{id:previous.id,alreadySubmitted:true},created:false};return {order:previous,created:false};}
    if(!catalog.tables.includes(table))fail(400,'Bàn không còn tồn tại. Hãy chọn lại bàn.');
    const clean=[];
    for(const item of items){const dish=catalog.menu.find(m=>m.id===item?.id&&m.active!==false);if(!dish||!Number.isInteger(item.qty)||item.qty<1||item.qty>99||typeof item.note!=='string'||item.note.length>200)fail(400,'Món không còn bán hoặc số lượng/ghi chú không hợp lệ.');if(item.price!==undefined&&item.price!==dish.price)fail(409,'Giá món đã thay đổi. Vui lòng kiểm tra giỏ món và lưu lại.');clean.push({id:dish.id,name:dish.name,price:dish.price,qty:item.qty,note:item.note});}
-   const order={id:randomUUID(),requestId,table,items:clean,paid:false,createdAt:new Date().toISOString()};
+   const order={id:randomUUID(),requestId,table,employee:{id:req.employee.id,name:req.employee.name},items:clean,paid:false,createdAt:new Date().toISOString()};
    orders.push(order);return {order,created:true};
  });res.status(result.created?201:200).json(result.order);
 });
@@ -61,6 +63,7 @@ app.delete('/api/invoices',async(req,res)=>{
  if(typeof key!=='string'||!Array.isArray(expectedOrders)||!expectedOrders.length)return fail(400,'Hóa đơn cần xóa không hợp lệ.');
  await store.mutate(orders=>{
    const selected=orders.filter(o=>o.items.length&&(o.paid?'paid:'+o.table+':'+(o.paymentId||o.id):'open:'+o.table)===key);
+   if(selected.some(o=>o.paid))return fail(403,'Chỉ quản trị viên được truy cập lịch sử thanh toán.');
    if(!selected.length)return fail(404,'Không tìm thấy hóa đơn.');
    if(JSON.stringify(selected)!==JSON.stringify(expectedOrders))return fail(409,'Hóa đơn đã thay đổi. Vui lòng kiểm tra và thử lại.');
    // Retain request IDs so a retried order submission cannot recreate the invoice.

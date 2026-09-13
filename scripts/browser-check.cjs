@@ -25,12 +25,18 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
    await admin.locator('#photo-preview img').waitFor();
    await admin.locator('#dish-form .primary').click();await admin.locator('#editor .sheet').waitFor({state:'detached'});
    await admin.locator('#menu-search').fill('Món thử');assert.equal(await admin.locator('.admin-dish').count(),1);
+   await admin.locator('[data-view=employees]').click();await admin.locator('#new-employee').click();
+   await admin.locator('[name=name]').fill('Nguyễn Văn An');await admin.locator('[name=code]').fill('0012345678901234567890');
+   await admin.locator('#employee-form .primary').click();await admin.locator('.employee-row').waitFor();
    const staff=await context.newPage();staff.on('pageerror',e=>errors.push(e.message));await staff.goto(base);
+   await staff.locator('#staff-code').fill('0012345678901234567890');await staff.locator('#staff-login button').click();
    await staff.locator('#table option[value="13"]').waitFor({state:'attached'});await staff.locator('#table').selectOption('13');
    await staff.locator('#search').fill('Món thử');await staff.locator('.dish img').waitFor();await staff.locator('[data-plus]').click();await staff.locator('#opencart').click();await staff.locator('#send').click();await staff.locator('#overlay .sheet').waitFor({state:'detached'});
    await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill="open:13"]').click();await staff.locator('#checkout').waitFor();
    staff.once('dialog',d=>d.accept());await staff.locator('#checkout').click();await staff.locator('#checkout').waitFor({state:'detached'});
-   await staff.locator('[data-bill^="paid:13:"]').click();assert.match(await staff.locator('.panel').textContent(),/45.000đ/);assert.equal(await staff.locator('#checkout').count(),0);await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill^="paid:13:"]').waitFor();
+   await staff.locator('.open-head').waitFor();assert.equal(await staff.getByText('Lịch sử thanh toán',{exact:true}).count(),0);assert.equal(await staff.locator('.invoice-card').count(),0);
+   await admin.locator('[data-view=history]').click();await admin.locator('[data-history^="paid:13:"]').click();assert.match(await admin.locator('.history-detail').textContent(),/45.000đ/);
+   await admin.evaluate(()=>{window.print=()=>{window.printed=true;};});await admin.locator('#history-print').click();assert.equal(await admin.evaluate(()=>window.printed),true);
    await admin.locator('[data-view=reports]').click();await admin.locator('.revenue-card h2').filter({hasText:'45.000đ'}).waitFor();
    await admin.locator('[data-period=week]').click();await admin.locator('.revenue-card').waitFor();await admin.locator('[data-period=month]').click();await admin.locator('.revenue-card').waitFor();
    for(const width of [320,390]){await admin.setViewportSize({width,height:844});assert.ok(await admin.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
@@ -42,16 +48,13 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
    const first=await create(13,'history-first'),second=await create(13,'history-second'),other=await create(1,'history-other');
    await context.request.post(base+'/api/checkout',{data:{ids:[first.id,second.id]}});
    await context.request.post(base+'/api/checkout',{data:{ids:[other.id]}});
-   await staff.reload();await staff.locator('[data-view=bills]').click();
-   await staff.locator('[data-bill^="paid:1:"]').waitFor();
-   assert.equal(await staff.locator('[data-bill^="paid:13:"]').count(),2);
-   assert.equal(await staff.locator('.invoice-card').count(),3);
-   const history=await (await context.request.get(base+'/api/orders?history=all')).json();
+   await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('.open-head').waitFor();assert.equal(await staff.locator('.invoice-card').count(),0);
+   assert.deepEqual(await (await context.request.get(base+'/api/orders?history=all')).json(),[]);
+   await admin.locator('[data-view=history]').click();await admin.locator('[data-history^="paid:1:"]').waitFor();assert.equal(await admin.locator('.invoice-card').count(),3);
+   const history=await (await context.request.get(base+'/api/admin/orders',{headers:{Authorization:'Bearer browser-test-only-123'}})).json();
    const payment=history.find(o=>o.id===first.id).paymentId;
-   await staff.locator('[data-bill="paid:13:'+payment+'"]').click();
-   assert.equal(await staff.locator('.orderline').count(),2);
-   assert.match(await staff.locator('.panel').textContent(),/history-test/);
-   for(const width of [320,390]){await staff.setViewportSize({width,height:844});assert.ok(await staff.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+   await admin.locator('[data-history="paid:13:'+payment+'"]').click();assert.equal(await admin.locator('.orderline').count(),2);assert.match(await admin.locator('.history-detail').textContent(),/history-test/);
+   for(const width of [320,390]){await admin.setViewportSize({width,height:844});assert.ok(await admin.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
    await create(2,'remove-browser');await create(2,'remove-browser-second');
    await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill="open:2"]').click();
    assert.equal(await staff.locator('[data-delta="-1"]').first().isDisabled(),true);
@@ -69,18 +72,29 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
    staff.once('dialog',d=>d.accept());await staff.locator('[data-remove-order]').first().click();
    await staff.waitForFunction(()=>document.querySelectorAll('.orderline').length===1);
    staff.once('dialog',d=>d.accept());await staff.locator('[data-remove-order]').click();
-   await staff.locator('.history-head').waitFor();assert.equal(await staff.locator('[data-bill="open:2"]').count(),0);
-   await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill^="paid:1:"]').click();assert.equal(await staff.locator('[data-remove-order]').count(),0);
+   await staff.locator('.open-head').waitFor();assert.equal(await staff.locator('[data-bill="open:2"]').count(),0);
+   await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('.open-head').waitFor();assert.equal(await staff.locator('[data-remove-order]').count(),0);
    assert.equal(await staff.locator('[data-quantity-order]').count(),0);
    await create(2,'delete-invoice-first');await create(2,'delete-invoice-second');
    await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill="open:2"]').click();
    assert.equal(await staff.locator('#deletebill').textContent(),'Xoá hoá đơn');
    staff.once('dialog',d=>d.dismiss());await staff.locator('#deletebill').click();assert.equal(await staff.locator('.orderline').count(),2);
-   staff.once('dialog',d=>d.accept());await staff.locator('#deletebill').click();await staff.locator('.history-head').waitFor();
-   assert.equal(await staff.locator('[data-bill="open:2"]').count(),0);assert.equal(await staff.locator('.invoice-card').count(),3);
-   await staff.reload();await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill^="paid:1:"]').click();
-   staff.once('dialog',d=>d.accept());await staff.locator('#deletebill').click();await staff.locator('.history-head').waitFor();
-   assert.equal(await staff.locator('[data-bill^="paid:1:"]').count(),0);assert.equal(await staff.locator('.invoice-card').count(),2);
+   staff.once('dialog',d=>d.accept());await staff.locator('#deletebill').click();await staff.locator('.open-head').waitFor();
+   assert.equal(await staff.locator('[data-bill="open:2"]').count(),0);assert.equal(await staff.locator('.invoice-card').count(),0);
+   await admin.locator('[data-view=history]').click();await admin.locator('[data-history^="paid:1:"]').click();
+   admin.once('dialog',d=>d.accept());await admin.locator('#history-delete').click();await admin.locator('#history-refresh').waitFor();
+   assert.equal(await admin.locator('[data-history^="paid:1:"]').count(),0);assert.equal(await admin.locator('.invoice-card').count(),2);
+   await admin.locator('[data-view=employees]').click();await admin.locator('.employee-row').waitFor();
+   for(const width of [320,390]){await admin.setViewportSize({width,height:844});assert.ok(await admin.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+   const file=path.join(dir,'orders.json'),state=JSON.parse(fs.readFileSync(file));state.auth.sessions.forEach(s=>s.expiresAt=Date.now()-1);fs.writeFileSync(file,JSON.stringify(state));
+   await staff.locator('#staff-code').waitFor({timeout:10000});assert.equal(await staff.locator('[data-view=bills]').count(),0);
+   await staff.locator('#staff-code').fill('0012345678901234567890');await staff.locator('#staff-login button').click();await staff.locator('#staff-logout').waitFor();
+   await staff.reload();await staff.locator('#staff-logout').waitFor();
+   await admin.locator('[data-employee]').click();await admin.locator('[name=code]').fill('0009');await admin.locator('#employee-form .primary').click();await admin.locator('#editor .sheet').waitFor({state:'detached'});
+   await staff.locator('#staff-code').waitFor({timeout:10000});
+   await staff.locator('#staff-code').fill('0009');await staff.locator('#staff-login button').click();await staff.locator('#staff-logout').click();await staff.locator('#staff-code').waitFor();
+   await staff.reload();await staff.locator('#staff-code').waitFor();
+   for(const width of [320,390]){await staff.setViewportSize({width,height:844});assert.ok(await staff.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
    assert.deepEqual(errors,[]);console.log('PASS: mobile login, add table, upload photo, create/edit dish, staff order/checkout, quantity changes, invoice deletion, revenue and responsive layout.');console.log('Screenshot: '+path.join(os.tmpdir(),'chd-admin-preview.png'));
  }finally{
    if(browser)await browser.close();const exited=once(child,'exit');child.kill();await exited;

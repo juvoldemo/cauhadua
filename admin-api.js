@@ -12,7 +12,21 @@ router.use((req,res,next)=>{
   if(!timingSafeEqual(hash(supplied),hash(password)))return fail(401,'Mật khẩu quản trị không đúng.');
   next();
 });
+router.use('/employees',require('./staff-auth').employeesRouter);
 router.post('/session',(_,res)=>res.json({ok:true}));
+router.get('/orders',async(_,res)=>res.json((await store.read()).filter(o=>o.items.length)));
+router.delete('/invoices',async(req,res)=>{
+ const {key,expectedOrders}=req.body||{};
+ if(typeof key!=='string'||!Array.isArray(expectedOrders)||!expectedOrders.length)return fail(400,'Hóa đơn cần xóa không hợp lệ.');
+ await store.mutate(orders=>{
+   const selected=orders.filter(o=>o.items.length&&(o.paid?'paid:'+o.table+':'+(o.paymentId||o.id):'open:'+o.table)===key);
+   if(!selected.length)return fail(404,'Không tìm thấy hóa đơn.');
+   if(JSON.stringify(selected)!==JSON.stringify(expectedOrders))return fail(409,'Hóa đơn đã thay đổi. Vui lòng kiểm tra và thử lại.');
+   // Retain request IDs so a retried order submission cannot recreate the invoice.
+   selected.forEach(o=>{o.items=[];o.deletedAt=new Date().toISOString();});
+ });
+ res.json({ok:true});
+});
 router.get('/catalog',async(_,res)=>res.json(await store.readCatalog()));
 router.get('/reports',async(req,res)=>res.json(report(await store.read(),req.query.period,req.query.date)));
 function dishInput(body){

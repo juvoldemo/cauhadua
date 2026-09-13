@@ -30,7 +30,7 @@ Trong Vercel, chọn project **cauhadua**:
 1. **Settings → Build and Deployment**: Root Directory là thư mục chứa `package.json` (để mặc định nếu file nằm ngay gốc repo). Framework Preset là **Express**. Tắt các override Build Command và Output Directory cũ; không đặt `public` làm Root Directory. `vercel.json` khai báo framework và đường dẫn trang chủ.
 2. Kết nối database PostgreSQL, ví dụ Neon qua Marketplace/Storage. Trong **Settings → Environment Variables**, đặt `DATABASE_URL` bằng chuỗi kết nối pooled có SSL do nhà cung cấp cấp. Chọn môi trường **Production**; nếu dùng Preview, cấu hình một database thử riêng cho Preview. App cũng nhận biến `POSTGRES_URL`.
 3. Thêm biến **ADMIN_PASSWORD**, chọn mật khẩu riêng không để trống (độ dài tùy chọn) cho trang quản trị. **Deployments → Redeploy** bản commit mới sau khi thêm biến môi trường. Không chạy `npm start` làm Build Command.
-4. Mở `/` để xem app, `/admin` để đăng nhập quản trị và `/api/menu` để kiểm tra menu hiện tại. `/api/orders` trả về JSON đơn chưa thanh toán; nếu báo 503 kèm `DATABASE_URL` thì database chưa được cấu hình.
+4. Mở `/` để xem app, `/admin` để đăng nhập quản trị và đăng nhập nhân viên trước khi kiểm tra `/api/menu`. `/api/orders` trả về JSON đơn chưa thanh toán; nếu báo 503 kèm `DATABASE_URL` thì database chưa được cấu hình.
 
 App tự tạo bảng `chd_order_state`, bảng `chd_images` và thêm cột `catalog` khi nâng cấp; tài khoản database cần quyền tạo/sửa bảng. Các thay đổi đơn và thực đơn chạy trong transaction để tránh mất cập nhật đồng thời. Dữ liệu đơn cũ được giữ nguyên khi nâng cấp. Local không cấu hình database vẫn dùng file JSON. Đơn cũ trong file local không tự chuyển lên database. Khi chạy trên Vercel, app không lưu đơn vào ổ đĩa tạm hoặc bộ nhớ tiến trình.
 
@@ -61,7 +61,7 @@ Khi chưa chọn máy in USB, web dùng hộp thoại in trình duyệt. Máy Wi
 
 ## Phạm vi
 
-Giao diện mobile rộng tối đa 480 px. Với combo có lựa chọn lẩu, ghi lựa chọn vào ô ghi chú. Đơn đã lưu không chỉnh sửa; gọi bổ sung bằng đơn mới. Admin và API quản trị yêu cầu mật khẩu; trang gọi món/thanh toán của nhân viên vẫn dùng cơ chế truy cập bằng link như trước, chưa có tài khoản nhân viên riêng. Font Google có fallback sans-serif khi mất mạng.
+Giao diện mobile rộng tối đa 480 px. Với combo có lựa chọn lẩu, ghi lựa chọn vào ô ghi chú. Đơn đã lưu không chỉnh sửa; gọi bổ sung bằng đơn mới. Admin và API quản trị yêu cầu mật khẩu; trang gọi món và các API của nhân viên yêu cầu đăng nhập bằng mã số riêng, phiên có hiệu lực 8 tiếng. Font Google có fallback sans-serif khi mất mạng.
 # cauhadua
 
 ## In USB trên Chrome Android (iPOS ITP5)
@@ -73,3 +73,13 @@ Bill USB dùng ảnh chữ tiếng Việt rộng 576 điểm, giấy 80 mm, gử
 Chrome cần hỗ trợ WebUSB và Android cần cho phép truy cập thiết bị. HTTP qua IP nội bộ không dùng được WebUSB. Nếu không thấy máy hoặc không chiếm được cổng USB, kiểm tra cáp, quyền và đóng ứng dụng đang giữ máy in; nếu vẫn lỗi cần cầu nối Android phù hợp. Không cần cấu hình máy in trong .env.
 
 Tham khảo: https://developer.chrome.com/docs/capabilities/usb và https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/gs_lv_0.html
+
+## Đăng nhập nhân viên
+
+Vào `/admin` → **Nhân viên** → **Thêm nhân viên**, nhập họ và tên cùng mã số chỉ gồm 0–9. Mỗi mã thuộc một nhân viên; giữ nguyên số 0 ở đầu, không giới hạn số chữ số trong ô nhập (yêu cầu API vẫn chịu giới hạn dung lượng chung 300 KB). Giao mã cho nhân viên trước khi lưu. Mã được băm và không hiển thị lại; admin có thể sửa tên và cấp mã mới hoặc xóa nhân viên.
+
+Nhân viên nhập mã tại `/` để gọi món. Phiên được lưu bằng cookie HttpOnly và trong cơ sở dữ liệu, hết hạn đúng 8 tiếng sau đăng nhập, không gia hạn khi thao tác hoặc tải lại trang. Đổi mã, xóa nhân viên hoặc đăng xuất sẽ thu hồi phiên tương ứng. Khi hết hạn, cần nhập lại cùng mã để xác nhận. Giỏ chưa gửi được giữ trên trình duyệt. Đơn mới ghi nhận người tạo. Admin vẫn dùng ADMIN_PASSWORD riêng.
+
+Nâng cấp tự thêm cột `auth` trong PostgreSQL hoặc trường `auth` vào JSON local, giữ nguyên đơn và thực đơn cũ. Cần tạo nhân viên đầu tiên trong admin trước khi gọi món. Không cần thêm biến môi trường. Mã và phiên không xuất hiện trong API thực đơn hay danh sách nhân viên. Kiểm tra PostgreSQL cần DATABASE_URL thực tế.
+
+Lịch sử thanh toán chỉ có tại `/admin` → **Lịch sử**. Admin có thể xem chi tiết, in lại và xóa hóa đơn đã thanh toán. Trang nhân viên chỉ hiển thị hóa đơn chưa thanh toán; API nhân viên không trả về lịch sử kể cả khi thêm `history=all`.
