@@ -8,3 +8,4 @@
 .bill-quantity{gap:8px}.bill-quantity .add{width:34px;height:34px}.bill-quantity>span{min-width:20px;text-align:center;font-size:13px;font-variant-numeric:tabular-nums}.bill-quantity .add:disabled{opacity:.35;cursor:default}.orderline{gap:12px}.order-actions{flex-shrink:0}
 
 .secondary.delete-bill{color:#a1221c;background:#fff0ee;border:1px solid #e7c1bd}
+.unpaid-total{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 14px;margin:0 0 14px;border-radius:10px;background:#f0e6e6;color:#5c3533;font-size:12px}.unpaid-total strong{font-size:16px;white-space:nowrap}

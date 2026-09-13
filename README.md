@@ -66,7 +66,7 @@ Giao diện mobile rộng tối đa 480 px. Với combo có lựa chọn lẩu, 
 
 ## In USB trên Chrome Android (iPOS ITP5)
 
-Mở website bằng HTTPS trên POS, vào một hóa đơn, chọn **Kết nối máy in USB**, chọn đúng ITP5 và chấp nhận quyền USB của Chrome/Android. Sau đó **In bill** gửi ESC/POS trực tiếp, không mở hộp thoại in hệ thống. Lựa chọn được lưu riêng trên trình duyệt; khi mất quyền hoặc đổi máy, kết nối lại. Chọn **Dùng hộp thoại in hệ thống** để quay về cách in cũ.
+Mở website bằng HTTPS trên POS, đăng nhập **/admin**, tại mục **Máy in bill** chọn **Kết nối máy in USB**, chọn đúng ITP5 và chấp nhận quyền USB của Chrome/Android. Sau đó **In bill** gửi ESC/POS trực tiếp, không mở hộp thoại in hệ thống. Lựa chọn được lưu riêng trên trình duyệt; khi mất quyền hoặc đổi máy, kết nối lại. Chọn **Dùng hộp thoại in hệ thống** để quay về cách in cũ.
 
 Bill USB dùng ảnh chữ tiếng Việt rộng 576 điểm, giấy 80 mm, gửi từng dòng để giảm bộ nhớ trên POS. Đây là cấu hình ESC/POS cần thử trên ITP5 thực tế, chưa xác nhận firmware hỗ trợ lệnh ảnh GS v 0/cắt giấy. Không tự in lại khi truyền lỗi vì giấy có thể đã in một phần. Gửi USB thành công không xác nhận giấy đã in hay còn giấy.
 

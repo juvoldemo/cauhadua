@@ -14,12 +14,35 @@ export function printerEndpoint(device){
 }
 export async function connectPrinter(){
  supported();
- const device=await navigator.usb.requestDevice({filters:[{classCode:7},{classCode:255}]});
- printerEndpoint(device);
- await device.open();
- await device.close();
+ if(busy)throw new Error('Máy in đang được sử dụng. Vui lòng chờ.');
+ busy=true;
+ let device,target;
+ try{
+ device=await navigator.usb.requestDevice({filters:[{classCode:7},{classCode:255}]});
+ target=await claimPrinter(device);
  localStorage.setItem(key,JSON.stringify({vendorId:device.vendorId,productId:device.productId,serialNumber:device.serialNumber||''}));
  selected=device;
+ }finally{
+  if(target)try{await device.releaseInterface(target.iface);}catch{}
+  if(device?.opened)try{await device.close();}catch{}
+  busy=false;
+ }
+}
+export async function claimPrinter(device){
+ const target=printerEndpoint(device);
+ await device.open();
+ if(device.configuration?.configurationValue!==target.config)await device.selectConfiguration(target.config);
+ try{await device.claimInterface(target.iface);}catch(error){
+  throw new Error('Chrome thấy máy in nhưng không sử dụng được cổng USB. Hãy buộc dừng ứng dụng iPOS/ứng dụng in khác, đóng các tab in khác, rút cắm lại USB rồi kết nối lại. Nếu vẫn lỗi, cần kiểm tra cầu nối in Android. Chi tiết: '+error.message);
+ }
+ try{
+  const iface=device.configuration.interfaces.find(i=>i.interfaceNumber===target.iface);
+  if(iface?.alternate?.alternateSetting!==target.alt)await device.selectAlternateInterface(target.iface,target.alt);
+ }catch(error){
+  try{await device.releaseInterface(target.iface);}catch{}
+  throw error;
+ }
+ return target;
 }
 export function useSystemPrinter(){localStorage.removeItem(key);selected=null;}
 export function rasterPacket(rgba,width,height){
@@ -54,12 +77,8 @@ export async function printUsbReceipt(orders,table){
   const devices=await navigator.usb.getDevices();
   const matches=devices.filter(d=>preference&&d.vendorId===preference.vendorId&&d.productId===preference.productId&&(d.serialNumber||'')===preference.serialNumber);
   device=devices.includes(selected)?selected:matches.length===1?matches[0]:null;
-  if(!device)throw new Error('Hãy cắm máy in và bấm Kết nối máy in USB để chọn lại.');
-  target=printerEndpoint(device);
-  await device.open();
-  if(device.configuration?.configurationValue!==target.config)await device.selectConfiguration(target.config);
-  await device.claimInterface(target.iface);claimed=true;
-  await device.selectAlternateInterface(target.iface,target.alt);
+  if(!device)throw new Error('Hãy cắm máy in và vào /admin → Kết nối máy in USB để chọn lại.');
+  target=await claimPrinter(device);claimed=true;
   const send=async bytes=>{
    for(let offset=0;offset<bytes.length;){
     const chunk=bytes.subarray(offset,offset+4096);started=true;
