@@ -82,4 +82,4 @@ Nhân viên nhập mã tại `/` để gọi món. Phiên được lưu bằng c
 
 Nâng cấp tự thêm cột `auth` trong PostgreSQL hoặc trường `auth` vào JSON local, giữ nguyên đơn và thực đơn cũ. Cần tạo nhân viên đầu tiên trong admin trước khi gọi món. Không cần thêm biến môi trường. Mã và phiên không xuất hiện trong API thực đơn hay danh sách nhân viên. Kiểm tra PostgreSQL cần DATABASE_URL thực tế.
 
-Lịch sử thanh toán chỉ có tại `/admin` → **Lịch sử**. Admin có thể xem chi tiết, in lại và xóa hóa đơn đã thanh toán. Trang nhân viên chỉ hiển thị hóa đơn chưa thanh toán; API nhân viên không trả về lịch sử kể cả khi thêm `history=all`.
+Nhân viên chỉ thấy các hóa đơn do chính mình tạo trong ngày hiện tại theo giờ Việt Nam, từ 00:00 đến trước 22:00; sau 22:00 lịch sử này không còn hiện ở giao diện nhân viên. Giao diện nhân viên hiển thị cả hóa đơn chưa thanh toán và lịch sử đã thanh toán trong khung thời gian này. Admin vẫn có toàn bộ lịch sử tại `/admin` → **Lịch sử**.

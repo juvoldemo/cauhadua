@@ -15,8 +15,19 @@ app.get('/api/images/:id',async(req,res)=>{
  const data=await store.getImage(req.params.id);if(!data)return res.sendStatus(404);
  const [header,content]=data.split(',');res.set({'Cache-Control':'public, max-age=31536000, immutable','Content-Type':header.slice(5).split(';')[0],'X-Content-Type-Options':'nosniff'}).send(Buffer.from(content,'base64'));
 });
-// Staff only receive open orders, regardless of query parameters.
-app.get('/api/orders',async (req,res)=>res.json((await store.read()).filter(o=>o.items.length&&!o.paid)));
+// Staff can only see their own orders during the current Vietnam business day.
+// The staff history closes at 22:00 (UTC+7).
+function staffDayWindow(now=new Date()){
+ const vietnamNow=new Date(now.getTime()+7*60*60*1000);
+ const startVietnam=Date.UTC(vietnamNow.getUTCFullYear(),vietnamNow.getUTCMonth(),vietnamNow.getUTCDate());
+ const start=startVietnam-7*60*60*1000;
+ return {start,end:start+22*60*60*1000};
+}
+function visibleToStaff(order,employeeId,now=new Date()){
+ const createdAt=Date.parse(order.createdAt),{start,end}=staffDayWindow(now),current=now.getTime();
+ return current>=start&&current<end&&order.items.length&&order.employee?.id===employeeId&&Number.isFinite(createdAt)&&createdAt>=start&&createdAt<end;
+}
+app.get('/api/orders',async (req,res)=>res.json((await store.read()).filter(o=>visibleToStaff(o,req.employee.id))));
 app.post('/api/orders',async (req,res)=>{
  const {table,items,requestId}=req.body||{};
  if(!Number.isInteger(table)||!Array.isArray(items)||!items.length||items.length>100) return res.status(400).json({error:'Thông tin phiếu không hợp lệ.'});
@@ -35,6 +46,7 @@ app.patch('/api/orders/:id/items/:index',async(req,res)=>{
  if(!Number.isInteger(index)||index<0||!Number.isInteger(qty)||qty<1||qty>99||!Array.isArray(expectedItems))return fail(400,'Số lượng phải từ 1 đến 99.');
  const updated=await store.mutate(orders=>{
    const order=orders.find(o=>o.id===req.params.id);
+   if(order&&order.employee?.id!==req.employee.id)return fail(404,'Không tìm thấy phiếu gọi món.');
    if(!order)return fail(404,'Không tìm thấy phiếu gọi món.');
    if(order.paid)return fail(409,'Hóa đơn đã thanh toán, không thể đổi số lượng.');
    if(JSON.stringify(order.items)!==JSON.stringify(expectedItems))return fail(409,'Phiếu gọi món đã thay đổi. Vui lòng kiểm tra và thử lại.');
@@ -49,6 +61,7 @@ app.delete('/api/orders/:id/items/:index',async(req,res)=>{
  if(!Number.isInteger(index)||index<0||!Array.isArray(expectedItems))return fail(400,'Món cần xóa không hợp lệ.');
  await store.mutate(orders=>{
    const order=orders.find(o=>o.id===req.params.id);
+   if(order&&order.employee?.id!==req.employee.id)return fail(404,'Không tìm thấy phiếu gọi món.');
    if(!order)return fail(404,'Không tìm thấy phiếu gọi món.');
    if(order.paid)return fail(409,'Hóa đơn đã thanh toán, không thể xóa món.');
    if(JSON.stringify(order.items)!==JSON.stringify(expectedItems))return fail(409,'Phiếu gọi món đã thay đổi. Vui lòng tải lại và kiểm tra trước khi xóa.');
@@ -64,6 +77,7 @@ app.delete('/api/invoices',async(req,res)=>{
  await store.mutate(orders=>{
    const selected=orders.filter(o=>o.items.length&&(o.paid?'paid:'+o.table+':'+(o.paymentId||o.id):'open:'+o.table)===key);
    if(selected.some(o=>o.paid))return fail(403,'Chỉ quản trị viên được truy cập lịch sử thanh toán.');
+   if(selected.some(o=>o.employee?.id!==req.employee.id))return fail(404,'Không tìm thấy hóa đơn.');
    if(!selected.length)return fail(404,'Không tìm thấy hóa đơn.');
    if(JSON.stringify(selected)!==JSON.stringify(expectedOrders))return fail(409,'Hóa đơn đã thay đổi. Vui lòng kiểm tra và thử lại.');
    // Retain request IDs so a retried order submission cannot recreate the invoice.
@@ -75,7 +89,7 @@ app.post('/api/checkout',async (req,res)=>{
  const ids=req.body?.ids;if(!Array.isArray(ids)||!ids.length||ids.some(id=>typeof id!=='string'))return fail(400,'Danh sách phiếu không hợp lệ.');
  await store.mutate(orders=>{
    const selected=orders.filter(o=>ids.includes(o.id));
-   if(selected.length!==ids.length||selected.some(o=>!o.items.length)||new Set(selected.map(o=>o.table)).size!==1)return fail(400,'Danh sách phiếu không hợp lệ.');
+   if(selected.length!==ids.length||selected.some(o=>!o.items.length||o.employee?.id!==req.employee.id)||new Set(selected.map(o=>o.table)).size!==1)return fail(400,'Danh sách phiếu không hợp lệ.');
    const paymentId=randomUUID(),paidAt=new Date().toISOString();
    selected.forEach(o=>{if(!o.paid){o.paid=true;o.paidAt=paidAt;o.paymentId=paymentId;}});
  });res.json({ok:true});

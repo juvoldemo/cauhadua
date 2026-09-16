@@ -41,7 +41,7 @@ test('local routes, concurrent orders, persistence and checkout',async()=>{
     assert.equal((await app.request('/api/orders','POST',{...body,requestId:'invalid',items:[null]})).status,400);
     await app.stop();app=await start({ORDER_DB:file});
     const response=await app.request('/api/orders');assert.equal(response.headers.get('cache-control'),'no-store');
-    assert.equal((await response.json()).length,5);
+    assert.equal((await response.json()).length,6);
     const history=await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json();
     assert.equal(history.length,6);assert.equal(history.find(o=>o.id===id).paid,true);assert.ok(history.find(o=>o.id===id).paidAt);assert.ok(history.find(o=>o.id===id).paymentId);
     const persisted=JSON.parse(fs.readFileSync(file,'utf8')).orders;assert.equal(persisted.length,6);
@@ -105,7 +105,7 @@ test('admin authorization, catalog, photos, table management and price snapshots
    assert.equal((await admin('/menu/'+created.id,'PUT',{...dish,price:55000})).status,200);
    const stale=await app.request('/api/orders','POST',{...orderBody,requestId:'stale'});assert.equal(stale.status,409);
    assert.equal((await app.request('/api/checkout','POST',{ids:[order.id]})).status,200);
-   assert.deepEqual(await (await app.request('/api/orders')).json(),[]);
+   assert.equal((await (await app.request('/api/orders')).json()).length,1);
    const before=JSON.parse(fs.readFileSync(file,'utf8')).orders;assert.equal(before[0].items[0].price,45000);
    const report=await (await admin('/reports?period=day')).json();assert.equal(report.revenue,90000);assert.equal(report.payments,1);
    assert.equal((await admin('/menu/'+created.id,'DELETE')).status,200);
@@ -142,7 +142,7 @@ test('invoice deletion is atomic, scoped, persistent and preserves request dedup
   await app.request('/api/checkout','POST',{ids:[other.id]});
   const paid=await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json();
   assert.equal((await app.request('/api/invoices','DELETE',{key:'open:1',expectedOrders:[other]})).status,404);
-  assert.deepEqual(await (await app.request('/api/orders?history=all')).json(),[]);
+  assert.equal((await (await app.request('/api/orders?history=all')).json()).length,1);
   assert.equal((await app.request('/api/admin/orders')).status,401);
   assert.equal((await app.request('/api/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid})).status,403);
   assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid})).status,401);
