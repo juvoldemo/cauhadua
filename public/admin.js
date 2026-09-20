@@ -67,7 +67,7 @@ document.addEventListener('click',async e=>{
    if(d.history){selectedHistory=d.history;render();}
    if(b.id==='history-back'){selectedHistory=null;render();}
    if(b.id==='history-refresh'){historyOrders=await api('/orders');render();}
-   if(b.id==='history-print'){const entry=historyEntries().find(e=>e.key===selectedHistory);if(entry)await printReceipt(entry.orders,entry.table);}
+   if(b.id==='history-print'){const entry=historyEntries().find(e=>e.key===selectedHistory);if(entry){b.disabled=true;try{await printReceipt(entry.orders,entry.table);}finally{b.disabled=false;}}}
    if(b.id==='history-delete'&&confirm('Xóa hóa đơn đã thanh toán? Doanh thu sẽ được cập nhật.')){const entry=historyEntries().find(e=>e.key===selectedHistory);if(entry){b.disabled=true;await api('/invoices','DELETE',{key:entry.key,expectedOrders:entry.orders});historyOrders=await api('/orders');selectedHistory=null;reportData=null;render();}}
    if(d.view){if(d.view==='history'){historyOrders=await api('/orders');selectedHistory=null;}if(d.view==='employees')employees=await api('/employees');view=d.view;render();if(view==='reports')await loadReport();else{catalog=await api('/catalog');render();}}
    if(d.period){period=d.period;reportData=null;render();await loadReport();}

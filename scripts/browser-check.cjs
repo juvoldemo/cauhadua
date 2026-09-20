@@ -33,10 +33,11 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
    await staff.locator('#table option[value="13"]').waitFor({state:'attached'});await staff.locator('#table').selectOption('13');
    await staff.locator('#search').fill('Món thử');await staff.locator('.dish img').waitFor();await staff.locator('[data-plus]').click();await staff.locator('#opencart').click();await staff.locator('#send').click();await staff.locator('#overlay .sheet').waitFor({state:'detached'});
    await staff.locator('[data-view=bills]').click();await staff.locator('[data-bill="open:13"]').click();await staff.locator('#checkout').waitFor();
+   const staffDownload=staff.waitForEvent('download');await staff.locator('#printbill').click();assert.match((await staffDownload).suggestedFilename(),/-80mm\.png$/);
    staff.once('dialog',d=>d.accept());await staff.locator('#checkout').click();await staff.locator('#checkout').waitFor({state:'detached'});
    await staff.locator('.open-head').waitFor();assert.equal(await staff.getByText('Lịch sử thanh toán',{exact:true}).count(),0);assert.equal(await staff.locator('.invoice-card').count(),0);
    await admin.locator('[data-view=history]').click();await admin.locator('[data-history^="paid:13:"]').click();assert.match(await admin.locator('.history-detail').textContent(),/45.000đ/);
-   await admin.evaluate(()=>{window.print=()=>{window.printed=true;};});await admin.locator('#history-print').click();assert.equal(await admin.evaluate(()=>window.printed),true);
+   const billDownload=admin.waitForEvent('download');await admin.locator('#history-print').click();assert.match((await billDownload).suggestedFilename(),/-80mm\.png$/);
    await admin.locator('[data-view=reports]').click();await admin.locator('.revenue-card h2').filter({hasText:'45.000đ'}).waitFor();
    await admin.locator('[data-period=week]').click();await admin.locator('.revenue-card').waitFor();await admin.locator('[data-period=month]').click();await admin.locator('.revenue-card').waitFor();
    for(const width of [320,390]){await admin.setViewportSize({width,height:844});assert.ok(await admin.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}

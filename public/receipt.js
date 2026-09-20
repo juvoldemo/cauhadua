@@ -1,4 +1,3 @@
-import {usbConfigured,printUsbReceipt} from './usb-printer.js';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const amount=n=>n.toLocaleString('vi-VN');
 const time=d=>d.toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit'});
@@ -18,20 +17,64 @@ export function receiptMarkup(orders,table,now=new Date()){
  <div class="receipt-summary"><div class="receipt-subtotal"><span>Thành tiền:</span><span>${amount(sum)} đ</span></div><div class="receipt-total"><span>Tổng tiền:</span><span>${amount(sum)} đ</span></div><div class="receipt-payment"><span>${paid?'Đã thanh toán:':'Cần thanh toán:'}</span><span>${amount(sum)} đ</span></div><div class="receipt-footer">Cảm ơn Quý Khách!<br>Hẹn gặp lại.</div></div></article>`;
 }
 
+// Record 300 dpi in the PNG so its 945 pixels correspond to 80 mm on paper.
+async function pngWithResolution(blob){
+ const bytes=new Uint8Array(await blob.arrayBuffer());
+ const chunk=new Uint8Array(21),view=new DataView(chunk.buffer);
+ view.setUint32(0,9);chunk.set([112,72,89,115],4);
+ view.setUint32(8,11811);view.setUint32(12,11811);chunk[16]=1;
+ let crc=0xffffffff;
+ for(const byte of chunk.subarray(4,17)){
+  crc^=byte;
+  for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);
+ }
+ view.setUint32(17,(crc^0xffffffff)>>>0);
+ const parts=[bytes.subarray(0,33),chunk];
+ for(let offset=33;offset<bytes.length;){
+  const size=new DataView(bytes.buffer,bytes.byteOffset+offset,4).getUint32(0)+12;
+  if(String.fromCharCode(...bytes.subarray(offset+4,offset+8))!=='pHYs')parts.push(bytes.subarray(offset,offset+size));
+  offset+=size;
+ }
+ return new Blob(parts,{type:'image/png'});
+}
+
+let exporting=false;
 export async function printReceipt(orders,table){
  if(!orders.length)throw new Error('Bàn chưa có món để in.');
- if(usbConfigured())return printUsbReceipt(orders,table);
+ if(exporting)throw new Error('Đang tạo ảnh bill. Vui lòng chờ.');
+ exporting=true;
  const root=document.querySelector('#print');
- root.innerHTML=receiptMarkup(orders,table);
- root.classList.add('measuring');
  try{
-   // CSS requires two concrete dimensions, not the invalid "80mm auto".
-   // Measure the receipt at its printable width to avoid an A4-sized blank tail.
-   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-   const height=Math.max(60,Math.ceil(root.querySelector('.receipt').getBoundingClientRect().height*25.4/96)+10);
-   let pageStyle=document.querySelector('#receipt-page-size');
-   if(!pageStyle){pageStyle=document.createElement('style');pageStyle.id='receipt-page-size';document.head.append(pageStyle);}
-   pageStyle.textContent=`@media print { @page { size:80mm ${height}mm; margin:4mm; } }`;
- }finally{root.classList.remove('measuring');}
- window.print();
+  root.innerHTML=receiptMarkup(orders,table);
+  root.classList.add('measuring');
+  await document.fonts.ready;
+  const receipt=root.querySelector('.receipt');
+  const margin=4*96/25.4,width=80*96/25.4;
+  const height=Math.ceil(receipt.getBoundingClientRect().height+margin*2);
+  const clone=receipt.cloneNode(true),originals=[receipt,...receipt.querySelectorAll('*')];
+  [clone,...clone.querySelectorAll('*')].forEach((node,index)=>{
+   const style=getComputedStyle(originals[index]);
+   for(const property of style)node.style.setProperty(property,style.getPropertyValue(property));
+   node.style.visibility='visible';
+  });
+  const html=new XMLSerializer().serializeToString(clone);
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><foreignObject x="${margin}" y="${margin}" width="${width-margin*2}" height="${height-margin*2}">${html}</foreignObject></svg>`;
+  const image=new Image();
+  await new Promise((resolve,reject)=>{
+   image.onload=resolve;image.onerror=()=>reject(new Error('Không tạo được ảnh bill. Vui lòng thử lại.'));
+   image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+  });
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.round(80/25.4*300);canvas.height=Math.ceil(height*canvas.width/width);
+  const ctx=canvas.getContext('2d');
+  if(!ctx)throw new Error('Trình duyệt không hỗ trợ tạo ảnh bill.');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(image,0,0,canvas.width,canvas.height);
+  const blob=await new Promise((resolve,reject)=>canvas.toBlob(result=>result?resolve(result):reject(new Error('Bill quá dài để xuất ảnh.')),'image/png'));
+  const url=URL.createObjectURL(await pngWithResolution(blob));
+  const link=document.createElement('a'),safe=value=>String(value).replace(/[^a-zA-Z0-9_-]/g,'-');
+  link.href=url;link.download=`bill-ban-${safe(table)}-${safe(orders[0].paymentId||orders[0].id).slice(0,8)}-${Date.now()}-80mm.png`;
+  document.body.append(link);
+  try{link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+ }finally{root?.classList.remove('measuring');exporting=false;}
 }
