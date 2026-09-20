@@ -40,6 +40,37 @@ const path=require('node:path'),os=require('node:os'),assert=require('node:asser
    assert.ok(ink>1000,'download contains visible receipt text');
    if(count===10)await download.saveAs(path.join(os.tmpdir(),'chd-bill-80mm.png'));
   }
-  console.log('PASS: PNG download, 80mm at 300 dpi, visible text, 1/10/55 items, dynamic height, no print dialog even with USB configured.');console.log('Preview: '+path.join(os.tmpdir(),'chd-bill-80mm.png'));
+  const phone=await browser.newPage({viewport:{width:390,height:844},userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'});
+  let downloads=0;phone.on('download',()=>downloads++);
+  await phone.goto('http://127.0.0.1:'+server.address().port+'/receipt-check');
+  await phone.evaluate(()=>{
+   Object.defineProperty(navigator,'canShare',{configurable:true,value:({files})=>files[0].type==='image/png'});
+   Object.defineProperty(navigator,'share',{configurable:true,value:async({files})=>{
+    window.shared={type:files[0].type,name:files[0].name,size:files[0].size,active:navigator.userActivation.isActive};
+    if(window.shareError)throw new DOMException('Share failed',window.shareError);
+   }});
+  });
+  const renderPhone=()=>phone.evaluate(async()=>{
+   const {printReceipt}=await import('/receipt.js');
+   await printReceipt([{id:'phone-bill',createdAt:'2026-09-10T10:56:00Z',items:[{name:'Tàu hũ đá',qty:1,price:13000}]}],3);
+  });
+  await renderPhone();
+  assert.equal(await phone.locator('#receipt-photo').isVisible(),true);
+  assert.ok(await phone.locator('#receipt-photo img').evaluate(async img=>{await img.decode();return img.naturalWidth===945;}));
+  await phone.locator('.photo-share').click();
+  const shared=await phone.evaluate(()=>window.shared);
+  assert.equal(shared.type,'image/png');assert.match(shared.name,/-80mm\.png$/);assert.ok(shared.size>1000);assert.equal(shared.active,true);
+  await phone.evaluate(()=>window.shareError='AbortError');await phone.locator('.photo-share').click();
+  assert.equal(await phone.locator('#receipt-photo').isVisible(),true);
+  assert.equal(await phone.locator('.photo-share').isEnabled(),true);
+  await phone.evaluate(()=>window.shareError='NotAllowedError');await phone.locator('.photo-share').click();
+  assert.match(await phone.locator('.photo-help').textContent(),/Nhấn giữ/);
+  await phone.locator('.photo-close').click();await phone.locator('#receipt-photo').waitFor({state:'detached'});assert.equal(await phone.locator('#receipt-photo').count(),0);
+  await phone.evaluate(()=>Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>false}));
+  await renderPhone();assert.equal(await phone.locator('.photo-share').isVisible(),false);
+  assert.match(await phone.locator('.photo-help').textContent(),/Nhấn giữ/);
+  await phone.locator('.photo-close').click();await phone.locator('#receipt-photo').waitFor({state:'detached'});assert.equal(downloads,0);
+  await phone.close();
+  console.log('PASS: PNG download, 80mm at 300 dpi, 1/10/55 items; simulated iPhone image preview, PNG sharing with user activation, cancellation and unsupported-share fallback without downloading.');console.log('Preview: '+path.join(os.tmpdir(),'chd-bill-80mm.png'));
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;});

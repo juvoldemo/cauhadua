@@ -38,6 +38,34 @@ async function pngWithResolution(blob){
  return new Blob(parts,{type:'image/png'});
 }
 
+function showPhotoPreview(file){
+ document.querySelector('#receipt-photo')?.close();
+ const url=URL.createObjectURL(file),previousFocus=document.activeElement;
+ const dialog=document.createElement('dialog');
+ dialog.id='receipt-photo';
+ dialog.setAttribute('aria-labelledby','receipt-photo-title');
+ dialog.innerHTML='<h2 id="receipt-photo-title">Ảnh bill 80 mm</h2><p class="photo-help"></p><img alt="Ảnh hóa đơn khổ giấy 80 mm"><button type="button" class="primary photo-share">Lưu vào Ảnh / Chia sẻ</button><button type="button" class="secondary photo-close">Đóng</button>';
+ const help=dialog.querySelector('.photo-help'),share=dialog.querySelector('.photo-share');
+ const supported=Boolean(navigator.share&&navigator.canShare?.({files:[file]}));
+ const fallback='Nhấn giữ ảnh bill bên dưới, sau đó chọn “Lưu vào Ảnh” hoặc “Lưu hình ảnh”.';
+ help.textContent=supported?'Bấm “Lưu vào Ảnh / Chia sẻ”, rồi chọn “Lưu hình ảnh” trong bảng chia sẻ của iPhone.':fallback;
+ share.hidden=!supported;
+ dialog.querySelector('img').src=url;
+ // A separate tap keeps native sharing within a fresh user gesture after rendering.
+ share.addEventListener('click',async()=>{
+  share.disabled=true;
+  try{await navigator.share({files:[file]});}
+  catch(error){if(error.name!=='AbortError')help.textContent='Không mở được bảng chia sẻ. '+fallback;}
+  finally{share.disabled=false;}
+ });
+ dialog.querySelector('.photo-close').addEventListener('click',()=>dialog.close());
+ dialog.addEventListener('close',()=>{
+  URL.revokeObjectURL(url);dialog.remove();
+  if(previousFocus?.isConnected)previousFocus.focus();
+ },{once:true});
+ document.body.append(dialog);dialog.showModal();
+}
+
 let exporting=false;
 export async function printReceipt(orders,table){
  if(!orders.length)throw new Error('Bàn chưa có món để in.');
@@ -71,9 +99,12 @@ export async function printReceipt(orders,table){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(image,0,0,canvas.width,canvas.height);
   const blob=await new Promise((resolve,reject)=>canvas.toBlob(result=>result?resolve(result):reject(new Error('Bill quá dài để xuất ảnh.')),'image/png'));
-  const url=URL.createObjectURL(await pngWithResolution(blob));
-  const link=document.createElement('a'),safe=value=>String(value).replace(/[^a-zA-Z0-9_-]/g,'-');
-  link.href=url;link.download=`bill-ban-${safe(table)}-${safe(orders[0].paymentId||orders[0].id).slice(0,8)}-${Date.now()}-80mm.png`;
+  const png=await pngWithResolution(blob),safe=value=>String(value).replace(/[^a-zA-Z0-9_-]/g,'-');
+  const filename=`bill-ban-${safe(table)}-${safe(orders[0].paymentId||orders[0].id).slice(0,8)}-${Date.now()}-80mm.png`;
+  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  if(ios){showPhotoPreview(new File([png],filename,{type:'image/png'}));return;}
+  const url=URL.createObjectURL(png),link=document.createElement('a');
+  link.href=url;link.download=filename;
   document.body.append(link);
   try{link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
  }finally{root?.classList.remove('measuring');exporting=false;}
