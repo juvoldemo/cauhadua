@@ -76,12 +76,11 @@ app.delete('/api/invoices',async(req,res)=>{
  if(typeof key!=='string'||!Array.isArray(expectedOrders)||!expectedOrders.length)return fail(400,'Hóa đơn cần xóa không hợp lệ.');
  await store.mutate(orders=>{
    const selected=orders.filter(o=>o.items.length&&(o.paid?'paid:'+o.table+':'+(o.paymentId||o.id):'open:'+o.table)===key);
-   if(selected.some(o=>o.paid))return fail(403,'Chỉ quản trị viên được truy cập lịch sử thanh toán.');
    if(selected.some(o=>o.employee?.id!==req.employee.id))return fail(404,'Không tìm thấy hóa đơn.');
    if(!selected.length)return fail(404,'Không tìm thấy hóa đơn.');
    if(JSON.stringify(selected)!==JSON.stringify(expectedOrders))return fail(409,'Hóa đơn đã thay đổi. Vui lòng kiểm tra và thử lại.');
    // Retain request IDs so a retried order submission cannot recreate the invoice.
-   selected.forEach(o=>{o.items=[];o.deletedAt=new Date().toISOString();});
+   selected.forEach(o=>{if(o.paid)o.deletedItems=structuredClone(o.items);o.items=[];o.deletedAt=new Date().toISOString();});
  });
  res.json({ok:true});
 });

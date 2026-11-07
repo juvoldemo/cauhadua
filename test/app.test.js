@@ -144,12 +144,12 @@ test('invoice deletion is atomic, scoped, persistent and preserves request dedup
   assert.equal((await app.request('/api/invoices','DELETE',{key:'open:1',expectedOrders:[other]})).status,404);
   assert.equal((await (await app.request('/api/orders?history=all')).json()).length,1);
   assert.equal((await app.request('/api/admin/orders')).status,401);
-  assert.equal((await app.request('/api/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid})).status,403);
+  assert.equal((await app.request('/api/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:[other]})).status,409);
   assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid})).status,401);
   const retry=await (await app.request('/api/orders','POST',{...body,table:1,requestId:'invoice-other'})).json();assert.equal(retry.alreadySubmitted,true);assert.equal(retry.items,undefined);
   assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:[]},'test-setup-admin')).status,400);
   assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:[other]},'test-setup-admin')).status,409);
-  assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid},'test-setup-admin')).status,200);
+  assert.equal((await app.request('/api/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid})).status,200);
   assert.deepEqual(await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json(),[]);
   assert.equal((await app.request('/api/admin/deleted-invoices')).status,401);
   const archived=await (await app.request('/api/admin/deleted-invoices','GET',undefined,'test-setup-admin')).json();
