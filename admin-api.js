@@ -15,6 +15,7 @@ router.use((req,res,next)=>{
 router.use('/employees',require('./staff-auth').employeesRouter);
 router.post('/session',(_,res)=>res.json({ok:true}));
 router.get('/orders',async(_,res)=>res.json((await store.read()).filter(o=>o.items.length)));
+router.get('/deleted-invoices',async(_,res)=>res.json((await store.read()).filter(o=>o.paid&&o.deletedAt).map(o=>({...o,items:o.deletedItems||[]}))));
 router.delete('/invoices',async(req,res)=>{
  const {key,expectedOrders}=req.body||{};
  if(typeof key!=='string'||!Array.isArray(expectedOrders)||!expectedOrders.length)return fail(400,'Hóa đơn cần xóa không hợp lệ.');
@@ -23,7 +24,7 @@ router.delete('/invoices',async(req,res)=>{
    if(!selected.length)return fail(404,'Không tìm thấy hóa đơn.');
    if(JSON.stringify(selected)!==JSON.stringify(expectedOrders))return fail(409,'Hóa đơn đã thay đổi. Vui lòng kiểm tra và thử lại.');
    // Retain request IDs so a retried order submission cannot recreate the invoice.
-   selected.forEach(o=>{o.items=[];o.deletedAt=new Date().toISOString();});
+   selected.forEach(o=>{if(o.paid)o.deletedItems=structuredClone(o.items);o.items=[];o.deletedAt=new Date().toISOString();});
  });
  res.json({ok:true});
 });

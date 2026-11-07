@@ -151,6 +151,10 @@ test('invoice deletion is atomic, scoped, persistent and preserves request dedup
   assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:[other]},'test-setup-admin')).status,409);
   assert.equal((await app.request('/api/admin/invoices','DELETE',{key:'paid:1:'+paid[0].paymentId,expectedOrders:paid},'test-setup-admin')).status,200);
   assert.deepEqual(await (await app.request('/api/admin/orders','GET',undefined,'test-setup-admin')).json(),[]);
+  assert.equal((await app.request('/api/admin/deleted-invoices')).status,401);
+  const archived=await (await app.request('/api/admin/deleted-invoices','GET',undefined,'test-setup-admin')).json();
+  assert.deepEqual(archived.map(o=>o.items),paid.map(o=>o.items));
+  assert.ok(archived.every(o=>o.deletedAt&&o.createdAt&&o.table===1));
   const report=require('../reports').report(JSON.parse(fs.readFileSync(file,'utf8')).orders);
   assert.equal(report.revenue,0);assert.equal(report.payments,0);assert.deepEqual(report.bestsellers,[]);
  }finally{await app.stop();if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);}
